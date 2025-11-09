@@ -9,12 +9,13 @@ import json
 import re
 import base64
 import io
+# ast 라이브러리 제거 (더 이상 필요 없음)
 
 # ⭐ Admin SDK 관련 라이브러리 임포트
 from firebase_admin import credentials, firestore, initialize_app
 # Admin SDK의 firestore와 Google Cloud SDK의 firestore를 구분하기 위해 alias 사용
 from google.cloud import firestore as gcp_firestore
-# ast, google.oauth2, firebase_admin import는 제거
+# from google.oauth2 import service_account 
 
 from langchain.chains import ConversationalRetrievalChain
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
@@ -32,41 +33,45 @@ from tensorflow.keras.layers import LSTM, Dense
 
 
 # ================================
-# 1. Firebase 연동 및 직렬화/역직렬화 함수 (Secrets 분리 통합 - JSON 파싱 우회)
+# 1. Firebase 연동 및 직렬화/역직렬화 함수 (Admin SDK 사용 - JSON 통합)
 # ================================
 @st.cache_resource(ttl=None)
 def initialize_firestore_admin():
     """
     Firebase Admin SDK를 사용하여 관리자 권한으로 Firestore 클라이언트를 초기화합니다.
-    Secrets의 자동 JSON 파싱 오류를 피하기 위해 개별 키를 수동으로 재구성합니다.
+    'FIREBASE_SERVICE_ACCOUNT_JSON' 키 하나만 사용하여 데이터를 추출합니다.
     """
     try:
-        # 1. Secrets에서 개별 키 가져오기 (st.secrets 객체 사용)
-        project_id = st.secrets.get("PROJECT_ID")
-        client_email = st.secrets.get("CLIENT_EMAIL")
-        private_key_value = st.secrets.get("PRIVATE_KEY")
+        # 1. Secrets에서 JSON 데이터 로드
+        if "FIREBASE_SERVICE_ACCOUNT_JSON" not in st.secrets:
+            return None, "FIREBASE_SERVICE_ACCOUNT_JSON Secret이 누락되었습니다."
         
-        # 2. 필수 키 누락 검사
-        if not all([project_id, client_email, private_key_value]):
-            missing_keys = [k for k in ["PROJECT_ID", "CLIENT_EMAIL", "PRIVATE_KEY"] if not st.secrets.get(k)]
-            return None, f"Secrets 키가 누락되었습니다: {', '.join(missing_keys)}"
-
-        # 3. 서비스 계정 딕셔너리 수동 구성 (가장 중요: JSON 파싱 오류를 완전히 우회)
-        # private_key_value가 문자열인 경우 줄바꿈 치환 (Secrets UI에 입력된 형식에 따라 필요)
-        if isinstance(private_key_value, str):
-             # 'Invalid \escape' 오류를 유발하는 '\n'을 최종적으로 Admin SDK가 원하는 형태의 줄바꿈으로 복원
-             final_private_key = private_key_value.replace('\\n', '\n')
+        service_account_data = st.secrets["FIREBASE_SERVICE_ACCOUNT_JSON"]
+        
+        sa_info = None
+        
+        # 2. 데이터 형식 확인 및 정제 (가장 강력한 복구 로직)
+        if isinstance(service_account_data, str):
+            # 문자열인 경우: 유효하지 않은 이스케이프 문자 및 줄바꿈을 복구하여 JSON 로드
+            try:
+                # 1단계: Secrets UI의 Multi-line 입력 시 생기는 \n 문제를 복구
+                sa_info_str = service_account_data.strip().replace('\\n', '\n')
+                # 2단계: JSON 파싱 시도
+                sa_info = json.loads(sa_info_str)
+            except json.JSONDecodeError:
+                # 만약 복구 후에도 JSONDecodeError가 발생하면, 이는 Secrets 입력 문자열이 잘못된 것임
+                return None, "FIREBASE_SERVICE_ACCOUNT_JSON의 JSON 구문 오류입니다. 값을 확인하세요."
+        elif isinstance(service_account_data, dict):
+            # 딕셔너리인 경우 (Streamlit Cloud에서 자동 파싱된 경우)
+            sa_info = service_account_data
         else:
-             final_private_key = private_key_value
+            return None, f"FIREBASE_SERVICE_ACCOUNT_JSON의 형식이 올바르지 않습니다. (Type: {type(service_account_data)})"
+            
+        # 3. 필수 필드 검사 (추출된 데이터가 유효한지 확인)
+        if not sa_info.get("project_id") or not sa_info.get("private_key"):
+             return None, "JSON 내 'project_id' 또는 'private_key' 필드가 누락되었습니다."
 
-        sa_info = {
-            "type": "service_account",
-            "project_id": project_id,
-            "private_key": final_private_key,
-            "client_email": client_email,
-        }
-        
-        # 4. Firebase Admin SDK 초기화 (중복 방지 로직 유지)
+        # 4. Firebase Admin SDK 초기화
         if not firebase_admin._apps:
             cred = credentials.Certificate(sa_info)
             initialize_app(cred, name="admin_app")
