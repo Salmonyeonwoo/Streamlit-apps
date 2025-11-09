@@ -12,8 +12,9 @@ import io
 
 # ⭐ Admin SDK 관련 라이브러리 임포트
 from firebase_admin import credentials, firestore, initialize_app
+# Admin SDK의 firestore와 Google Cloud SDK의 firestore를 구분하기 위해 alias 사용
 from google.cloud import firestore as gcp_firestore
-# ast 라이브러리 제거 (더 이상 필요 없음)
+# ast, google.oauth2, firebase_admin import는 제거
 
 from langchain.chains import ConversationalRetrievalChain
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
@@ -31,13 +32,13 @@ from tensorflow.keras.layers import LSTM, Dense
 
 
 # ================================
-# 1. Firebase 연동 및 직렬화/역직렬화 함수 (Secrets 분리 통합)
+# 1. Firebase 연동 및 직렬화/역직렬화 함수 (Secrets 분리 통합 - JSON 파싱 우회)
 # ================================
 @st.cache_resource(ttl=None)
 def initialize_firestore_admin():
     """
     Firebase Admin SDK를 사용하여 관리자 권한으로 Firestore 클라이언트를 초기화합니다.
-    개별 Secrets 키를 사용하여 JSON 파싱 문제를 완전히 우회합니다.
+    Secrets의 자동 JSON 파싱 오류를 피하기 위해 개별 키를 수동으로 재구성합니다.
     """
     try:
         # 1. Secrets에서 개별 키 가져오기 (st.secrets 객체 사용)
@@ -50,10 +51,10 @@ def initialize_firestore_admin():
             missing_keys = [k for k in ["PROJECT_ID", "CLIENT_EMAIL", "PRIVATE_KEY"] if not st.secrets.get(k)]
             return None, f"Secrets 키가 누락되었습니다: {', '.join(missing_keys)}"
 
-        # 3. 서비스 계정 딕셔너리 수동 구성 (JSON 파싱 우회)
-        # private_key_value가 문자열인 경우에만 줄바꿈 치환 (Secrets UI에 입력된 형식에 따라 필요)
+        # 3. 서비스 계정 딕셔너리 수동 구성 (가장 중요: JSON 파싱 오류를 완전히 우회)
+        # private_key_value가 문자열인 경우 줄바꿈 치환 (Secrets UI에 입력된 형식에 따라 필요)
         if isinstance(private_key_value, str):
-             # Secrets에 저장된 '\\n'을 '\n'으로 치환하여 유효한 PEM 키 문자열로 복원
+             # 'Invalid \escape' 오류를 유발하는 '\n'을 최종적으로 Admin SDK가 원하는 형태의 줄바꿈으로 복원
              final_private_key = private_key_value.replace('\\n', '\n')
         else:
              final_private_key = private_key_value
@@ -65,8 +66,8 @@ def initialize_firestore_admin():
             "client_email": client_email,
         }
         
-        # 4. Firebase Admin SDK 초기화
-        if not firestore._app:
+        # 4. Firebase Admin SDK 초기화 (중복 방지 로직 유지)
+        if not firebase_admin._apps:
             cred = credentials.Certificate(sa_info)
             initialize_app(cred, name="admin_app")
         
@@ -106,7 +107,7 @@ def save_index_to_firestore(db, vector_store, index_id="user_portfolio_rag"):
 
 def load_index_from_firestore(db, embeddings, index_id="user_portfolio_rag"):
     """Firestore에서 Base64 문자열을 로드하여 FAISS 인덱스로 역직렬화합니다."""
-    if not db: return None
+    if not db: return False
 
     try:
         doc = db.collection("rag_indices").document(index_id).get()
