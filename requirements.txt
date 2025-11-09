@@ -1,0 +1,41 @@
+streamlit==1.38.0
+
+# LangChain (버전 제거, Cloud가 자동 설치)
+langchain
+langchain-community
+langchain-core
+langchain-google-genai
+google-generativeai
+
+# Vector Store
+faiss-cpu==1.8.0
+
+#RAG documents
+unstructured
+PyPDF2
+faiss-cpu
+psutil
+paddlepaddle
+paddlenlp
+tensorflow
+keras
+
+#Adding Firestore Admin SDK
+firebase-admin
+# Docs / Parsing
+unstructured==0.14.9
+PyPDF2
+beautifulsoup4
+
+# ML & Analytics
+numpy
+pandas
+matplotlib
+
+# Utilities
+google-cloud-firestore
+protobuf
+requests
+tqdm
+markdown-it-py
+rich
