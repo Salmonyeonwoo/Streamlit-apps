@@ -467,64 +467,64 @@ if 'llm_init_error_msg' not in st.session_state: st.session_state.llm_init_error
 if 'firestore_load_success' not in st.session_state: st.session_state.firestore_load_success = False
 
 # 언어 설정 로드 (UI 출력 전 필수)
-L = LANG[st.session_state.language] 
+L = LANG[st.session_state.language] 
 API_KEY = os.environ.get("GEMINI_API_KEY")
 
 # =======================================================
 # 5. Streamlit UI 페이지 설정 (스크립트 내 첫 번째 ST 명령)
 # =======================================================
 # 이 라인이 st. 로 시작하는 함수 중 무조건 첫 번째로 실행되어야 합니다.
-st.set_page_config(page_title=L["title"], layout="wide") 
+st.set_page_config(page_title=L["title"], layout="wide")
 
 # =======================================================
 # 6. 서비스 초기화 및 LLM/DB 로직 (페이지 설정 후 안전하게 실행)
 # =======================================================
 
-if 'llm' not in st.session_state: 
-    llm_init_error = None
-    if not API_KEY:
-        llm_init_error = L["llm_error_key"]
-    else:
-        try:
-            # LLM 및 Embeddings 초기화
-            st.session_state.llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.7, google_api_key=API_KEY)
-            st.session_state.embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=API_KEY)
-            st.session_state.is_llm_ready = True
-            
-            # ⭐⭐ Admin SDK 클라이언트 초기화로 변경 (JSON 파싱 강화 버전) ⭐⭐
-            db, error_message = initialize_firestore_admin() 
-            st.session_state.firestore_db = db
-            
-            if error_message:
-                # Admin SDK 초기화 실패 시 에러 메시지를 LLM 에러 메시지에 포함
-                llm_init_error = f"{L['llm_error_init']} (DB Auth Error: {error_message})"
-            
-            # DB 로딩 로직
-            if db and 'conversation_chain' not in st.session_state:
-                # DB 로딩 시도
-                loaded_index = load_index_from_firestore(db, st.session_state.embeddings)
-                
-                if loaded_index:
-                    st.session_state.conversation_chain = get_rag_chain(loaded_index)
-                    st.session_state.is_rag_ready = True
-                    st.session_state.firestore_load_success = True
-                else:
-                    st.session_state.firestore_load_success = False
-            
-        except Exception as e:
-            llm_init_error = f"{L['llm_error_init']} {e}"
-            st.session_state.is_llm_ready = False
-    
-    if llm_init_error:
-        st.session_state.is_llm_ready = False
-        st.session_state.llm_init_error_msg = llm_init_error # 메시지를 세션에 저장
+if 'llm' not in st.session_state: 
+    llm_init_error = None
+    if not API_KEY:
+        llm_init_error = L["llm_error_key"]
+    else:
+        try:
+            # LLM 및 Embeddings 초기화
+            st.session_state.llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.7, google_api_key=API_KEY)
+            st.session_state.embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=API_KEY)
+            st.session_state.is_llm_ready = True
+            
+            # ⭐⭐ Admin SDK 클라이언트 초기화로 변경 (JSON 파싱 강화 버전) ⭐⭐
+            db, error_message = initialize_firestore_admin() 
+            st.session_state.firestore_db = db
+            
+            if error_message:
+                # Admin SDK 초기화 실패 시 에러 메시지를 LLM 에러 메시지에 포함
+                llm_init_error = f"{L['llm_error_init']} (DB Auth Error: {error_message})"
+            
+            # DB 로딩 로직
+            if db and 'conversation_chain' not in st.session_state:
+                # DB 로딩 시도
+                loaded_index = load_index_from_firestore(db, st.session_state.embeddings)
+                
+                if loaded_index:
+                    st.session_state.conversation_chain = get_rag_chain(loaded_index)
+                    st.session_state.is_rag_ready = True
+                    st.session_state.firestore_load_success = True
+                else:
+                    st.session_state.firestore_load_success = False
+            
+        except Exception as e:
+            llm_init_error = f"{L['llm_error_init']} {e}"
+            st.session_state.is_llm_ready = False
+    
+    if llm_init_error:
+        st.session_state.is_llm_ready = False
+        st.session_state.llm_init_error_msg = llm_init_error # 메시지를 세션에 저장
 
 # 나머지 세션 상태 초기화
 if "memory" not in st.session_state:
-    st.session_state.memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+    st.session_state.memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
 
 if "embedding_cache" not in st.session_state:
-    st.session_state.embedding_cache = {}
+    st.session_state.embedding_cache = {}
 
 # ================================
 # 7. 초기화 오류 메시지 출력 및 DB 상태 알림
@@ -532,13 +532,13 @@ if "embedding_cache" not in st.session_state:
 
 # ⭐⭐ 초기화 오류 메시지 출력 (st.set_page_config 이후에 안전하게) ⭐⭐
 if st.session_state.llm_init_error_msg:
-    st.error(st.session_state.llm_init_error_msg)
-    
+    st.error(st.session_state.llm_init_error_msg)
+    
 if st.session_state.get('firestore_db'):
-    if st.session_state.get('firestore_load_success', False):
-        st.success("✅ RAG 인덱스가 데이터베이스에서 성공적으로 로드되었습니다!")
-    elif not st.session_state.get('is_rag_ready', False):
-        st.info("데이터베이스에서 기존 RAG 인덱스를 찾을 수 없습니다. 파일을 업로드하여 새로 만드세요.")
+    if st.session_state.get('firestore_load_success', False):
+        st.success("✅ RAG 인덱스가 데이터베이스에서 성공적으로 로드되었습니다!")
+    elif not st.session_state.get('is_rag_ready', False):
+        st.info("데이터베이스에서 기존 RAG 인덱스를 찾을 수 없습니다. 파일을 업로드하여 새로 만드세요.")
 
 
 # ================================
@@ -546,68 +546,68 @@ if st.session_state.get('firestore_db'):
 # ================================
 
 with st.sidebar:
-    selected_lang_key = st.selectbox(
-        L["lang_select"],
-        options=['ko', 'en', 'ja'],
-        index=['ko', 'en', 'ja'].index(st.session_state.language),
-        format_func=lambda x: {"ko": "한국어", "en": "English", "ja": "日本語"}[x],
-    )
-    
-    if selected_lang_key != st.session_state.language:
-        st.session_state.language = selected_lang_key
-        st.rerun() 
-    
-    L = LANG[st.session_state.language] 
-    
-    st.title(L["sidebar_title"])
-    st.markdown("---")
-    
-    uploaded_files_widget = st.file_uploader(
-        L["file_uploader"],
-        type=["pdf","txt","html"],
-        accept_multiple_files=True
-    )
-    
-    if uploaded_files_widget:
-        st.session_state.uploaded_files_state = uploaded_files_widget
-    elif 'uploaded_files_state' not in st.session_state:
-        st.session_state.uploaded_files_state = None
-    
-    files_to_process = st.session_state.uploaded_files_state if st.session_state.uploaded_files_state else []
-    
-    if files_to_process and st.session_state.is_llm_ready:
-        if st.button(L["button_start_analysis"], key="start_analysis"):
-            with st.spinner(f"자료 분석 및 학습 DB 구축 중..."):
-                text_chunks = get_document_chunks(files_to_process)
-                vector_store = get_vector_store(text_chunks)
-                
-                if vector_store:
-                    # RAG 인덱스가 성공적으로 생성되면 Firestore에 저장 시도
-                    db = st.session_state.firestore_db
-                    save_success = False
-                    if db:
-                        save_success = save_index_to_firestore(db, vector_store)
-                    
-                    if save_success:
-                        st.success(L["embed_success"].format(count=len(text_chunks)) + " (DB 저장 완료)")
-                    else:
-                        st.success(L["embed_success"].format(count=len(text_chunks)) + " (DB 저장 실패)")
+    selected_lang_key = st.selectbox(
+        L["lang_select"],
+        options=['ko', 'en', 'ja'],
+        index=['ko', 'en', 'ja'].index(st.session_state.language),
+        format_func=lambda x: {"ko": "한국어", "en": "English", "ja": "日本語"}[x],
+    )
+    
+    if selected_lang_key != st.session_state.language:
+        st.session_state.language = selected_lang_key
+        st.rerun() 
+    
+    L = LANG[st.session_state.language] 
+    
+    st.title(L["sidebar_title"])
+    st.markdown("---")
+    
+    uploaded_files_widget = st.file_uploader(
+        L["file_uploader"],
+        type=["pdf","txt","html"],
+        accept_multiple_files=True
+    )
+    
+    if uploaded_files_widget:
+        st.session_state.uploaded_files_state = uploaded_files_widget
+    elif 'uploaded_files_state' not in st.session_state:
+        st.session_state.uploaded_files_state = None
+    
+    files_to_process = st.session_state.uploaded_files_state if st.session_state.uploaded_files_state else []
+    
+    if files_to_process and st.session_state.is_llm_ready:
+        if st.button(L["button_start_analysis"], key="start_analysis"):
+            with st.spinner(f"자료 분석 및 학습 DB 구축 중..."):
+                text_chunks = get_document_chunks(files_to_process)
+                vector_store = get_vector_store(text_chunks)
+                
+                if vector_store:
+                    # RAG 인덱스가 성공적으로 생성되면 Firestore에 저장 시도
+                    db = st.session_state.firestore_db
+                    save_success = False
+                    if db:
+                        save_success = save_index_to_firestore(db, vector_store)
+                    
+                    if save_success:
+                        st.success(L["embed_success"].format(count=len(text_chunks)) + " (DB 저장 완료)")
+                    else:
+                        st.success(L["embed_success"].format(count=len(text_chunks)) + " (DB 저장 실패)")
 
-                    st.session_state.conversation_chain = get_rag_chain(vector_store)
-                    st.session_state.is_rag_ready = True
-                else:
-                    st.session_state.is_rag_ready = False
-                    st.error(L["embed_fail"])
+                    st.session_state.conversation_chain = get_rag_chain(vector_store)
+                    st.session_state.is_rag_ready = True
+                else:
+                    st.session_state.is_rag_ready = False
+                    st.error(L["embed_fail"])
 
-    else:
-        st.session_state.is_rag_ready = False
-        st.warning(L.get("warning_no_files", "먼저 학습 자료를 업로드하세요.")) 
+    else:
+        st.session_state.is_rag_ready = False
+        st.warning(L.get("warning_no_files", "먼저 학습 자료를 업로드하세요.")) 
 
-    st.markdown("---")
-    feature_selection = st.radio(
-        L["content_tab"], 
-        [L["rag_tab"], L["content_tab"], L["lstm_tab"]]
-    )
+    st.markdown("---")
+    feature_selection = st.radio(
+        L["content_tab"], 
+        [L["rag_tab"], L["content_tab"], L["lstm_tab"]]
+    )
 
 st.title(L["title"])
 
@@ -615,183 +615,183 @@ st.title(L["title"])
 # 9. 기능별 페이지 구현
 # ================================
 if feature_selection == L["rag_tab"]:
-    st.header(L["rag_header"])
-    st.markdown(L["rag_desc"])
-    if st.session_state.get('is_rag_ready', False) and st.session_state.get('conversation_chain'):
-        if "messages" not in st.session_state:
-            st.session_state.messages = []
+    st.header(L["rag_header"])
+    st.markdown(L["rag_desc"])
+    if st.session_state.get('is_rag_ready', False) and st.session_state.get('conversation_chain'):
+        if "messages" not in st.session_state:
+            st.session_state.messages = []
 
-        for message in st.session_state.messages:
-            with st.chat_message(message["role"]):
-                st.markdown(message["content"])
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
 
-        if prompt := st.chat_input(L["rag_input_placeholder"]):
-            st.session_state.messages.append({"role":"user","content":prompt})
-            with st.chat_message("user"):
-                st.markdown(prompt)
-            with st.chat_message("assistant"):
-                with st.spinner(f"답변 생성 중..." if st.session_state.language == 'ko' else "Generating response..."):
-                    try:
-                        response = st.session_state.conversation_chain.invoke({"question":prompt})
-                        answer = response.get('answer','응답을 생성할 수 없습니다.' if st.session_state.language == 'ko' else 'Could not generate response.')
-                        st.markdown(answer)
-                        st.session_state.messages.append({"role":"assistant","content":answer})
-                    except Exception as e:
-                        st.error(f"챗봇 오류: {e}")
-                        st.session_state.messages.append({"role":"assistant","content":"오류 발생" if st.session_state.language == 'ko' else "An error occurred"})
-    else:
-        st.warning(L["warning_rag_not_ready"])
+        if prompt := st.chat_input(L["rag_input_placeholder"]):
+            st.session_state.messages.append({"role":"user","content":prompt})
+            with st.chat_message("user"):
+                st.markdown(prompt)
+            with st.chat_message("assistant"):
+                with st.spinner(f"답변 생성 중..." if st.session_state.language == 'ko' else "Generating response..."):
+                    try:
+                        response = st.session_state.conversation_chain.invoke({"question":prompt})
+                        answer = response.get('answer','응답을 생성할 수 없습니다.' if st.session_state.language == 'ko' else 'Could not generate response.')
+                        st.markdown(answer)
+                        st.session_state.messages.append({"role":"assistant","content":answer})
+                    except Exception as e:
+                        st.error(f"챗봇 오류: {e}")
+                        st.session_state.messages.append({"role":"assistant","content":"오류 발생" if st.session_state.language == 'ko' else "An error occurred"})
+    else:
+        st.warning(L["warning_rag_not_ready"])
 
 elif feature_selection == L["content_tab"]:
-    st.header(L["content_header"])
-    st.markdown(L["content_desc"])
+    st.header(L["content_header"])
+    st.markdown(L["content_desc"])
 
-    if st.session_state.is_llm_ready:
-        topic = st.text_input(L["topic_label"])
-        
-        level_map = dict(zip(L["level_options"], ["Beginner", "Intermediate", "Advanced"]))
-        content_map = dict(zip(L["content_options"], ["summary", "quiz", "example"]))
-        
-        level_display = st.selectbox(L["level_label"], L["level_options"])
-        content_type_display = st.selectbox(L["content_type_label"], L["content_options"])
+    if st.session_state.is_llm_ready:
+        topic = st.text_input(L["topic_label"])
+        
+        level_map = dict(zip(L["level_options"], ["Beginner", "Intermediate", "Advanced"]))
+        content_map = dict(zip(L["content_options"], ["summary", "quiz", "example"]))
+        
+        level_display = st.selectbox(L["level_label"], L["level_options"])
+        content_type_display = st.selectbox(L["content_type_label"], L["content_options"])
 
-        level = level_map[level_display]
-        content_type = content_map[content_type_display]
+        level = level_map[level_display]
+        content_type = content_map[content_type_display]
 
-        if st.button(L["button_generate"]):
-            if topic:
-                target_lang = {"ko": "Korean", "en": "English", "ja": "Japanese"}[st.session_state.language]
-                
-                if content_type == 'quiz':
-                    full_prompt = f"""You are a professional AI coach at the {level} level.
+        if st.button(L["button_generate"]):
+            if topic:
+                target_lang = {"ko": "Korean", "en": "English", "ja": "Japanese"}[st.session_state.language]
+                
+                if content_type == 'quiz':
+                    full_prompt = f"""You are a professional AI coach at the {level} level.
 Please generate exactly 3 multiple-choice questions about the topic in {target_lang}.
 Your entire response MUST be a valid JSON object wrapped in ```json tags.
 The JSON must have a single key named 'quiz_questions', which is an array of objects.
 Each question object must contain: 'question' (string), 'options' (array of objects with 'option' (A,B,C,D) and 'text' (string)), 'correct_answer' (A,B,C, or D), and 'explanation' (string).
 
 Topic: {topic}"""
-                else:
-                    display_type_text = L["content_options"][L["content_options"].index(content_type_display)]
-                    full_prompt = f"""You are a professional AI coach at the {level} level.
+                else:
+                    display_type_text = L["content_options"][L["content_options"].index(content_type_display)]
+                    full_prompt = f"""You are a professional AI coach at the {level} level.
 Please generate clear and educational content in the requested {display_type_text} format based on the topic.
 The response MUST be strictly in {target_lang}.
 
 Topic: {topic}
 Requested Format: {display_type_text}"""
-                
-                
-                with st.spinner(f"Generating {content_type_display} for {topic}..."):
-                    
-                    quiz_data_raw = None
-                    try:
-                        response = st.session_state.llm.invoke(full_prompt)
-                        quiz_data_raw = response.content
-                        
-                        if content_type == 'quiz':
-                            quiz_data = clean_and_load_json(quiz_data_raw)
-                            
-                            if quiz_data:
-                                st.session_state.quiz_data = quiz_data
-                                st.session_state.current_question = 0
-                                st.session_state.quiz_submitted = False
-                                st.session_state.quiz_results = [None] * len(quiz_data.get('quiz_questions',[]))
-                                
-                                st.success(f"**{topic}** - **{content_type_display}** Result:")
-                            else:
-                                st.error(L["quiz_error_llm"])
-                                st.markdown(f"**{L['quiz_original_response']}**:")
-                                st.code(quiz_data_raw, language="json")
+                
+                
+                with st.spinner(f"Generating {content_type_display} for {topic}..."):
+                    
+                    quiz_data_raw = None
+                    try:
+                        response = st.session_state.llm.invoke(full_prompt)
+                        quiz_data_raw = response.content
+                        
+                        if content_type == 'quiz':
+                            quiz_data = clean_and_load_json(quiz_data_raw)
+                            
+                            if quiz_data:
+                                st.session_state.quiz_data = quiz_data
+                                st.session_state.current_question = 0
+                                st.session_state.quiz_submitted = False
+                                st.session_state.quiz_results = [None] * len(quiz_data.get('quiz_questions',[]))
+                                
+                                st.success(f"**{topic}** - **{content_type_display}** Result:")
+                            else:
+                                st.error(L["quiz_error_llm"])
+                                st.markdown(f"**{L['quiz_original_response']}**:")
+                                st.code(quiz_data_raw, language="json")
 
-                        else: # 일반 콘텐츠 (요약, 예제)
-                            st.success(f"**{topic}** - **{content_type_display}** Result:")
-                            st.markdown(response.content)
+                        else: # 일반 콘텐츠 (요약, 예제)
+                            st.success(f"**{topic}** - **{content_type_display}** Result:")
+                            st.markdown(response.content)
 
-                    except Exception as e:
-                        st.error(f"Content Generation Error: {e}")
-                        if quiz_data_raw:
-                            st.markdown(f"**{L['quiz_original_response']}**: {quiz_data_raw}")
+                    except Exception as e:
+                        st.error(f"Content Generation Error: {e}")
+                        if quiz_data_raw:
+                            st.markdown(f"**{L['quiz_original_response']}**: {quiz_data_raw}")
 
-            else:
-                st.warning(L["warning_topic"])
-    else:
-        st.error(L["llm_error_init"])
-        
-    # 퀴즈 풀이 렌더링을 메인 루프에서 조건부로 단 한 번 호출
-    is_quiz_ready = content_type == 'quiz' and 'quiz_data' in st.session_state and st.session_state.quiz_data
-    if is_quiz_ready and st.session_state.get('current_question', 0) < len(st.session_state.quiz_data.get('quiz_questions', [])):
-        render_interactive_quiz(st.session_state.quiz_data, st.session_state.language)
+            else:
+                st.warning(L["warning_topic"])
+    else:
+        st.error(L["llm_error_init"])
+        
+    # 퀴즈 풀이 렌더링을 메인 루프에서 조건부로 단 한 번 호출
+    is_quiz_ready = content_type == 'quiz' and 'quiz_data' in st.session_state and st.session_state.quiz_data
+    if is_quiz_ready and st.session_state.get('current_question', 0) < len(st.session_state.quiz_data.get('quiz_questions', [])):
+        render_interactive_quiz(st.session_state.quiz_data, st.session_state.language)
 
 
 elif feature_selection == L["lstm_tab"]:
-    st.header(L["lstm_header"])
-    st.markdown(L["lstm_desc"])
+    st.header(L["lstm_header"])
+    st.markdown(L["lstm_desc"])
 
-    with st.spinner(f"LSTM model loading/training..." if st.session_state.language != 'ko' else "LSTM 모델을 로드/학습 중입니다..."):
-        try:
-            # 1. 모델 로드 및 데이터 생성
-            lstm_model, historical_scores = load_or_train_lstm()
-            st.success("LSTM Model Ready!")
+    with st.spinner(f"LSTM model loading/training..." if st.session_state.language != 'ko' else "LSTM 모델을 로드/학습 중입니다..."):
+        try:
+            # 1. 모델 로드 및 데이터 생성
+            lstm_model, historical_scores = load_or_train_lstm()
+            st.success("LSTM Model Ready!")
 
-            # 2. 예측 로직
-            look_back = 5
-            last_sequence = historical_scores[-look_back:]
-            input_sequence = np.reshape(last_sequence, (1, look_back, 1))
-            
-            future_predictions = []
-            current_input = input_sequence
+            # 2. 예측 로직
+            look_back = 5
+            last_sequence = historical_scores[-look_back:]
+            input_sequence = np.reshape(last_sequence, (1, look_back, 1))
+            
+            future_predictions = []
+            current_input = input_sequence
 
-            for i in range(5):
-                next_score = lstm_model.predict(current_input, verbose=0)[0]
-                future_predictions.append(next_score[0])
+            for i in range(5):
+                next_score = lstm_model.predict(current_input, verbose=0)[0]
+                future_predictions.append(next_score[0])
 
-                next_input = np.append(current_input[:, 1:, :], next_score[0]).reshape(1, look_back, 1)
-                current_input = next_input
+                next_input = np.append(current_input[:, 1:, :], next_score[0]).reshape(1, look_back, 1)
+                current_input = next_input
 
-            # 3. 시각화
-            fig, ax = plt.subplots(figsize=(10, 6))
+            # 3. 시각화
+            fig, ax = plt.subplots(figsize=(10, 6))
 
-            ax.plot(range(len(historical_scores)), historical_scores, label="Past Quiz Scores (Hypothetical)", marker='o', linestyle='-', color='blue')
-            future_indices = range(len(historical_scores), len(historical_scores) + len(future_predictions))
-            ax.plot(future_indices, future_predictions, label="Predicted Achievement (Next 5 Days)", marker='x', linestyle='--', color='red')
+            ax.plot(range(len(historical_scores)), historical_scores, label="Past Quiz Scores (Hypothetical)", marker='o', linestyle='-', color='blue')
+            future_indices = range(len(historical_scores), len(historical_scores) + len(future_predictions))
+            ax.plot(future_indices, future_predictions, label="Predicted Achievement (Next 5 Days)", marker='x', linestyle='--', color='red')
 
-            ax.set_title(L["lstm_header"])
-            ax.set_xlabel(L["topic_label"])
-            ax.set_ylabel("Achievement Score (0-100)")
-            ax.legend()
-            st.pyplot(fig)
+            ax.set_title(L["lstm_header"])
+            ax.set_xlabel(L["topic_label"])
+            ax.set_ylabel("Achievement Score (0-100)")
+            ax.legend()
+            st.pyplot(fig)
 
-            # 4. LLM 분석 코멘트
-            st.markdown("---")
-            st.markdown(f"#### {L.get('coach_analysis', 'AI Coach Analysis Comment')}")
-            
-            avg_recent = np.mean(historical_scores[-5:])
-            avg_predict = np.mean(future_predictions)
-            
-            if st.session_state.language == 'ko':
-                if avg_predict > avg_recent:
-                    comment = "최근 학습 데이터와 LSTM 예측 결과에 따르면, **앞으로의 학습 성취도가 긍정적으로 향상될 것으로 예측**됩니다. 현재 학습 방식을 유지하시거나, 난이도를 한 단계 높여 도전해 보세요!"
-                elif avg_predict < avg_recent - 5:
-                    comment = "LSTM 예측 결과, **성취도가 다소 하락할 수 있다는 신호**가 보입니다. 학습에 사용된 자료나 방법론에 대한 깊은 이해가 부족할 수 있습니다. RAG 챗봇 기능을 활용하여 기초 개념을 다시 확인해 보는 것을 추천합니다."
-                else:
-                    comment = "성취도는 현재 수준을 유지할 것으로 예측됩니다. 정체기가 될 수 있으니, **새로운 학습 콘텐츠 형식(예: 실습 예제 아이디어)을 생성**하여 학습에 활력을 더하는 것을 고려해 보세요。"
-            elif st.session_state.language == 'en': # English
-                if avg_predict > avg_recent:
-                    comment = "Based on recent learning data and LSTM prediction, **your achievement is projected to improve positively**. Maintain your current study methods or consider increasing the difficulty level."
-                elif avg_predict < avg_recent - 5:
-                    comment = "LSTM prediction suggests a **potential drop in achievement**. Your understanding of fundamental concepts may be lacking. Use the RAG Chatbot to review foundational knowledge."
-                else:
-                    comment = "Achievement is expected to remain stable. Consider generating **new content types (e.g., Practical Example Ideas)** to revitalize your learning during this plateau."
-            else: # Japanese
-                 if avg_predict > avg_recent:
-                    comment = "最近の学習データとLSTM予測結果に基づき、**今後の達成度はポジティブに向上すると予測**されます。現在の学習方法を維持するか、難易度を一段階上げて挑戦することを検討してください。"
-                 elif avg_predict < avg_recent - 5:
-                    comment = "LSTM予測の結果、**達成度がやや低下する可能性**が示されました。学習資料や方法論の基礎理解が不足しているかもしれません。RAGチャットボット機能を利用して、基本概念を再確認することをお勧めします。"
-                 else:
-                    comment = "達成度は現状維持と予測されます。停滞期になる可能性があります。**新しいコンテンツ形式（例：実践例のアイデア）を生成**し、学習に活力を与えることを検討してください。"
+            # 4. LLM 분석 코멘트
+            st.markdown("---")
+            st.markdown(f"#### {L.get('coach_analysis', 'AI Coach Analysis Comment')}")
+            
+            avg_recent = np.mean(historical_scores[-5:])
+            avg_predict = np.mean(future_predictions)
+            
+            if st.session_state.language == 'ko':
+                if avg_predict > avg_recent:
+                    comment = "최근 학습 데이터와 LSTM 예측 결과에 따르면, **앞으로의 학습 성취도가 긍정적으로 향상될 것으로 예측**됩니다. 현재 학습 방식을 유지하시거나, 난이도를 한 단계 높여 도전해 보세요!"
+                elif avg_predict < avg_recent - 5:
+                    comment = "LSTM 예측 결과, **성취도가 다소 하락할 수 있다는 신호**가 보입니다. 학습에 사용된 자료나 방법론에 대한 깊은 이해가 부족할 수 있습니다. RAG 챗봇 기능을 활용하여 기초 개념을 다시 확인해 보는 것을 추천합니다."
+                else:
+                    comment = "성취도는 현재 수준을 유지할 것으로 예측됩니다. 정체기가 될 수 있으니, **새로운 학습 콘텐츠 형식(예: 실습 예제 아이디어)을 생성**하여 학습에 활력을 더하는 것을 고려해 보세요。"
+            elif st.session_state.language == 'en': # English
+                if avg_predict > avg_recent:
+                    comment = "Based on recent learning data and LSTM prediction, **your achievement is projected to improve positively**. Maintain your current study methods or consider increasing the difficulty level."
+                elif avg_predict < avg_recent - 5:
+                    comment = "LSTM prediction suggests a **potential drop in achievement**. Your understanding of fundamental concepts may be lacking. Use the RAG Chatbot to review foundational knowledge."
+                else:
+                    comment = "Achievement is expected to remain stable. Consider generating **new content types (e.g., Practical Example Ideas)** to revitalize your learning during this plateau."
+            else: # Japanese
+                 if avg_predict > avg_recent:
+                    comment = "最近の学習データとLSTM予測結果に基づき、**今後の達成度はポジティブに向上すると予測**されます。現在の学習方法を維持するか、難易度を一段階上げて挑戦することを検討してください。"
+                 elif avg_predict < avg_recent - 5:
+                    comment = "LSTM予測の結果、**達成度がやや低下する可能性**が示されました。学習資料や方法論の基礎理解が不足しているかもしれません。RAGチャットボット機能を利用して、基本概念を再確認することをお勧めします。"
+                 else:
+                    comment = "達成度は現状維持と予測されます。停滞期になる可能性があります。**新しいコンテンツ形式（例：実践例のアイデア）を生成**し、学習に活力を与えることを検討してください。"
 
 
-            st.info(comment)
+            st.info(comment)
 
-        except Exception as e:
-            st.error(f"LSTM Model Processing Error: {e}")
-            st.markdown(f'<div style="background-color: #fce4e4; color: #cc0000; padding: 10px; border-radius: 5px;">{L["lstm_disabled_error"]}</div>', unsafe_allow_html=True)
+        except Exception as e:
+            st.error(f"LSTM Model Processing Error: {e}")
+            st.markdown(f'<div style="background-color: #fce4e4; color: #cc0000; padding: 10px; border-radius: 5px;">{L["lstm_disabled_error"]}</div>', unsafe_allow_html=True)
