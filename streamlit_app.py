@@ -9,13 +9,13 @@ import json
 import re
 import base64
 import io
-import ast # JSON 파싱 오류를 강력하게 해결하기 위해 ast 라이브러리 추가
+# ast 라이브러리는 더 이상 필요 없습니다.
 
 # ⭐ Admin SDK 관련 라이브러리 임포트
 from firebase_admin import credentials, firestore, initialize_app
 # Admin SDK의 firestore와 Google Cloud SDK의 firestore를 구분하기 위해 alias 사용
 from google.cloud import firestore as gcp_firestore
-from google.oauth2 import service_account
+# from google.oauth2 import service_account 
 
 from langchain.chains import ConversationalRetrievalChain
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
@@ -33,46 +33,40 @@ from tensorflow.keras.layers import LSTM, Dense
 
 
 # ================================
-# 1. Firebase 연동 및 직렬화/역직렬화 함수 (Admin SDK 사용 - JSON 정제 강화)
+# 1. Firebase 연동 및 직렬화/역직렬화 함수 (Admin SDK 사용 - 최종 안정성)
 # ================================
 @st.cache_resource(ttl=None)
 def initialize_firestore_admin():
     """
     Firebase Admin SDK를 사용하여 관리자 권한으로 Firestore 클라이언트를 초기화합니다.
-    Secrets 입력 오류에 매우 강력하게 대비한 최종 정제 로직을 포함합니다.
+    st.secrets를 통해 JSON 데이터를 딕셔너리로 자동 로드하여 오류를 방어합니다.
     """
     try:
-        # 1. Streamlit Secrets에서 JSON 문자열 로드
-        service_account_json_str = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON")
-        if not service_account_json_str:
+        # 1. Streamlit Secrets에서 값 로드 (st.secrets 사용)
+        # st.secrets는 Secrets.toml의 키를 속성으로 제공
+        if "FIREBASE_SERVICE_ACCOUNT_JSON" not in st.secrets:
             return None, "FIREBASE_SERVICE_ACCOUNT_JSON Secret이 누락되었습니다."
+        
+        sa_info = st.secrets["FIREBASE_SERVICE_ACCOUNT_JSON"]
+        
+        # 2. 데이터 형식 확인 및 정제
+        if isinstance(sa_info, str):
+            # 값이 문자열인 경우 (Secrets에 JSON 대신 문자열이 입력되었을 경우)
+            # 줄 바꿈 문자를 실제 '\n'으로 치환 (private_key 문제 해결)
+            sa_info_str = sa_info.strip().replace('\\n', '\n')
+            sa_info = json.loads(sa_info_str)
+        elif not isinstance(sa_info, dict):
+            # 딕셔너리도, 문자열도 아닌 알 수 없는 타입인 경우
+            return None, f"FIREBASE_SERVICE_ACCOUNT_JSON의 형식이 올바르지 않습니다. (Type: {type(sa_info)})"
             
-        # 2. 문자열 정제 (최종 강화 로직)
-        # .strip()으로 외부 공백 제거
-        purified_str = service_account_json_str.strip()
-        
-        # 3. ast.literal_eval을 사용한 안전한 파이썬 객체 해석
-        try:
-            # 먼저 파이썬 객체(문자열)로 해석하여, Secrets의 외부 따옴표와 이스케이프 문제를 해결
-            sa_info_str = ast.literal_eval(purified_str)
-        except (ValueError, TypeError, SyntaxError):
-            # ast.literal_eval이 실패하면 (이미 순수 JSON 문자열인 경우) 원본 사용
-            sa_info_str = purified_str
-
-        # 4. 줄 바꿈 문자 처리: Final Pass
-        # 'Invalid \escape' 오류의 핵심 원인인 백슬래시 문제를 최종적으로 해결
-        sa_info_str = sa_info_str.replace('\\\\n', '\n').replace('\\n', '\n')
-        
-        # 5. JSON 로드 시도
-        sa_info = json.loads(sa_info_str)
-
-        # 6. Firebase Admin SDK 초기화
-        if not firestore._app:
+        # 3. Firebase Admin SDK 초기화
+        # Credential은 딕셔너리 형태의 서비스 계정 정보를 받습니다.
+        if not firebase_admin._apps:
             cred = credentials.Certificate(sa_info)
             # 앱 이름을 지정하여 초기화 충돌 방지
             initialize_app(cred, name="admin_app")
         
-        # 7. Firestore 클라이언트 반환
+        # 4. Firestore 클라이언트 반환
         db = firestore.client()
         return db, None
 
@@ -447,7 +441,7 @@ LANG = {
         "quiz_complete": "クイズ完了!",
         "score": "スコア",
         "retake_quiz": "クイズを再試行",
-        "quiz_error_llm": "퀴즈 생성 실패: LLM이 유효한 JSON 형식을 반환하지 않았습니다. LLM의オリジナル応答を確認してください。",
+        "quiz_error_llm": "퀴즈 생성 실패: LLM이 올바른 JSON 형식을 반환하지 않았습니다. LLM의オリジナル応答を確認してください。",
         "quiz_original_response": "LLMオリジナル応答"
     }
 }
@@ -491,7 +485,7 @@ if 'llm' not in st.session_state:
             st.session_state.embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=API_KEY)
             st.session_state.is_llm_ready = True
             
-            # ⭐⭐ Admin SDK 클라이언트 초기화로 변경 (JSON 파싱 강화 버전) ⭐⭐
+            # ⭐⭐ Admin SDK 클라이언트 초기화 (st.secrets 기반 최종 안전성) ⭐⭐
             db, error_message = initialize_firestore_admin() 
             st.session_state.firestore_db = db
             
