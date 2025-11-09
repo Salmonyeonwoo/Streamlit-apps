@@ -33,54 +33,28 @@ from tensorflow.keras.layers import LSTM, Dense
 # ================================
 # 1. Firebase 연동 및 직렬화/역직렬화 함수 (Admin SDK 사용 - JSON 통합)
 # ================================
+
 @st.cache_resource(ttl=None)
-def initialize_firestore_admin():
+def initialize_firestore():
     """
-    Firebase Admin SDK를 사용하여 관리자 권한으로 Firestore 클라이언트를 초기화합니다.
-    'FIREBASE_SERVICE_ACCOUNT_JSON' 키 하나만 사용하여 데이터를 추출합니다.
+    Firebase Admin SDK 초기화 후 Firestore 클라이언트를 반환.
+    이미 초기화된 경우 재사용.
     """
     try:
-        # 1. Secrets에서 JSON 데이터 로드
-        if "FIREBASE_SERVICE_ACCOUNT_JSON" not in st.secrets:
-            firebase_cred_dict = json.loads(st.secrets["FIREBASE_SERVICE_ACCOUNT_JSON"])
-        
-        # st.secrets를 통해 값을 가져옵니다. 
-        service_account_data = st.secrets["FIREBASE_SERVICE_ACCOUNT_JSON"]
-        
-        sa_info = None
-        
-        # 2. 데이터 형식 확인 및 정제 (최종 복구 로직)
-        if isinstance(service_account_data, str):
-            # 문자열인 경우: 유효하지 않은 이스케이프 문자 및 줄바꿈을 복구하여 JSON 로드
-            try:
-                # 1단계: Secrets UI의 Multi-line 입력 시 생기는 \n 문제를 복구
-                sa_info_str = service_account_data.strip().replace('\\n', '\n')
-                # 2단계: JSON 파싱 시도 (이전의 오류가 발생한 지점)
-                sa_info = json.loads(sa_info_str)
-            except json.JSONDecodeError:
-                return None, "FIREBASE_SERVICE_ACCOUNT_JSON의 JSON 구문 오류입니다. 값을 확인하세요."
-        elif not isinstance(sa_info, dict):
-            # 딕셔너리도, 문자열도 아닌 경우
-            return None, f"FIREBASE_SERVICE_ACCOUNT_JSON의 형식이 올바르지 않습니다. (현재 타입: {type(sa_info)})"
-            
-        # 3. 필수 필드 검사
-        if not sa_info.get("project_id") or not sa_info.get("private_key"):
-             return None, "JSON 내 'project_id' 또는 'private_key' 필드가 누락되었습니다."
-
-        # 4. Firebase Admin SDK 초기화
-        import firebase_admin # 이 함수 내에서만 임포트하여 로컬 충돌 가능성 줄임
         if not firebase_admin._apps:
+            # st.secrets에서 Service Account JSON 불러오기
+            sa_json_str = st.secrets["FIREBASE_SERVICE_ACCOUNT_JSON"].strip().replace('\\n','\n')
+            sa_info = json.loads(sa_json_str)
+            
+            # 인증서 객체 생성 후 앱 초기화
             cred = credentials.Certificate(sa_info)
-            initialize_app(cred, name="admin_app")
+            firebase_admin.initialize_app(cred)
         
-        # 5. Firestore 클라이언트 반환
         db = firestore.client()
         return db, None
 
     except Exception as e:
-        error_msg = f"Firebase Admin 초기화 실패: Admin SDK 인증 정보를 확인하세요. ({e})"
-        print(error_msg)
-        return None, error_msg
+        return None, f"Firebase Admin 초기화 실패: {e}"
 
 
 def save_index_to_firestore(db, vector_store, index_id="user_portfolio_rag"):
