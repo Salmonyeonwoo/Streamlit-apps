@@ -9,13 +9,11 @@ import json
 import re
 import base64
 import io
-# ast 라이브러리는 더 이상 필요 없습니다.
 
 # ⭐ Admin SDK 관련 라이브러리 임포트
 from firebase_admin import credentials, firestore, initialize_app
-# Admin SDK의 firestore와 Google Cloud SDK의 firestore를 구분하기 위해 alias 사용
 from google.cloud import firestore as gcp_firestore
-# from google.oauth2 import service_account 
+# ast 라이브러리 제거 (더 이상 필요 없음)
 
 from langchain.chains import ConversationalRetrievalChain
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
@@ -33,37 +31,46 @@ from tensorflow.keras.layers import LSTM, Dense
 
 
 # ================================
-# 1. Firebase 연동 및 직렬화/역직렬화 함수 (Admin SDK 사용 - 최종 안정성)
+# 1. Firebase 연동 및 직렬화/역직렬화 함수 (Secrets 분리 통합)
 # ================================
 @st.cache_resource(ttl=None)
 def initialize_firestore_admin():
     """
-    st.secrets를 통해 JSON 데이터를 딕셔너리로 자동 로드하여 오류를 방어합니다.
+    Firebase Admin SDK를 사용하여 관리자 권한으로 Firestore 클라이언트를 초기화합니다.
+    개별 Secrets 키를 사용하여 JSON 파싱 문제를 완전히 우회합니다.
     """
     try:
-        # st.secrets 객체에 접근하여 키를 가져옵니다. 
-        # Streamlit이 secrets.toml 파일을 읽어와서 이 객체를 만듭니다.
-        if "FIREBASE_SERVICE_ACCOUNT_JSON" not in st.secrets:
-            return None, "FIREBASE_SERVICE_ACCOUNT_JSON Secret이 누락되었습니다."
+        # 1. Secrets에서 개별 키 가져오기 (st.secrets 객체 사용)
+        project_id = st.secrets.get("PROJECT_ID")
+        client_email = st.secrets.get("CLIENT_EMAIL")
+        private_key_value = st.secrets.get("PRIVATE_KEY")
         
-        # st.secrets는 JSON이나 TOML 구조를 파이썬 딕셔너리로 자동 파싱합니다.
-        sa_info = st.secrets["FIREBASE_SERVICE_ACCOUNT_JSON"]
+        # 2. 필수 키 누락 검사
+        if not all([project_id, client_email, private_key_value]):
+            missing_keys = [k for k in ["PROJECT_ID", "CLIENT_EMAIL", "PRIVATE_KEY"] if not st.secrets.get(k)]
+            return None, f"Secrets 키가 누락되었습니다: {', '.join(missing_keys)}"
+
+        # 3. 서비스 계정 딕셔너리 수동 구성 (JSON 파싱 우회)
+        # private_key_value가 문자열인 경우에만 줄바꿈 치환 (Secrets UI에 입력된 형식에 따라 필요)
+        if isinstance(private_key_value, str):
+             # Secrets에 저장된 '\\n'을 '\n'으로 치환하여 유효한 PEM 키 문자열로 복원
+             final_private_key = private_key_value.replace('\\n', '\n')
+        else:
+             final_private_key = private_key_value
+
+        sa_info = {
+            "type": "service_account",
+            "project_id": project_id,
+            "private_key": final_private_key,
+            "client_email": client_email,
+        }
         
-        # 여기서 sa_info는 이미 딕셔너리여야 합니다. (파싱 오류 원천 차단)
-        if not isinstance(sa_info, dict):
-            # 문자열로 들어왔을 경우를 대비하여 한 번 더 안전하게 처리 (Optional)
-            if isinstance(sa_info, str):
-                sa_info = json.loads(sa_info.replace('\\n', '\n'))
-            else:
-                return None, f"FIREBASE_SERVICE_ACCOUNT_JSON의 형식이 올바르지 않습니다. (Type: {type(sa_info)})"
-
-
-        # 3. Firebase Admin SDK 초기화
+        # 4. Firebase Admin SDK 초기화
         if not firestore._app:
             cred = credentials.Certificate(sa_info)
             initialize_app(cred, name="admin_app")
         
-        # 4. Firestore 클라이언트 반환
+        # 5. Firestore 클라이언트 반환
         db = firestore.client()
         return db, None
 
@@ -437,9 +444,9 @@ LANG = {
         "explanation": "解説",
         "quiz_complete": "クイズ完了!",
         "score": "スコア",
-        "retake_quiz": "クイズを再試行",
-        "quiz_error_llm": "퀴즈 생성 실패: LLM이 올바른 JSON 형식을 반환하지 않았습니다. LLM의オリジナル応答を確認してください。",
-        "quiz_original_response": "LLMオリジナル応答"
+        "retake_quiz": "クイズを再試행",
+        "quiz_error_llm": "퀴즈 생성 실패: LLM이 올바른 JSON 형식을 반환하지 않았습니다. LLM 응답 원본을 확인하세요。",
+        "quiz_original_response": "LLM 원본 응답"
     }
 }
 
