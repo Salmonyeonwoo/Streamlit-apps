@@ -480,7 +480,7 @@ st.set_page_config(page_title=L["title"], layout="wide")
 # 6. 서비스 초기화 및 LLM/DB 로직 (페이지 설정 후 안전하게 실행)
 # =======================================================
 
-if 'llm' not in st.session_state: 
+if 'llm' not in st.session_state:
     llm_init_error = None
     if not API_KEY:
         llm_init_error = L["llm_error_key"]
