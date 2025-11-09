@@ -9,10 +9,12 @@ import json
 import re
 import base64
 import io
+import ast # JSON 파싱 오류를 강력하게 해결하기 위해 ast 라이브러리 추가
 
 # ⭐ Admin SDK 관련 라이브러리 임포트
 from firebase_admin import credentials, firestore, initialize_app
-from google.cloud import firestore as gcp_firestore # Admin SDK의 firestore.Client와 구분하기 위함
+# Admin SDK의 firestore와 Google Cloud SDK의 firestore를 구분하기 위해 alias 사용
+from google.cloud import firestore as gcp_firestore
 from google.oauth2 import service_account
 
 from langchain.chains import ConversationalRetrievalChain
@@ -31,43 +33,48 @@ from tensorflow.keras.layers import LSTM, Dense
 
 
 # ================================
-# 1. Firebase 연동 및 직렬화/역직렬화 함수 (Admin SDK 사용)
+# 1. Firebase 연동 및 직렬화/역직렬화 함수 (Admin SDK 사용 - JSON 정제 강화)
 # ================================
 @st.cache_resource(ttl=None)
 def initialize_firestore_admin():
     """
     Firebase Admin SDK를 사용하여 관리자 권한으로 Firestore 클라이언트를 초기화합니다.
-    JSON 파싱 오류를 방지하기 위해 문자열을 정제합니다.
+    Secrets 입력 오류에 매우 강력하게 대비한 최종 정제 로직을 포함합니다.
     """
-    # 1. Streamlit Secrets에서 JSON 문자열 로드
     try:
-        # 환경 변수에서 JSON 문자열을 가져옴 (키: FIREBASE_SERVICE_ACCOUNT_JSON)
+        # 1. Streamlit Secrets에서 JSON 문자열 로드
         service_account_json_str = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON")
         if not service_account_json_str:
             return None, "FIREBASE_SERVICE_ACCOUNT_JSON Secret이 누락되었습니다."
             
-        # 2. 문자열 정제 (가장 중요): JSON 파싱 오류를 유발하는 숨겨진 문자 제거 및 치환
+        # 2. 문자열 정제 (최종 강화 로직)
         # .strip()으로 외부 공백 제거
-        # .encode('utf-8', 'ignore').decode('utf-8')으로 유니코드 인코딩 오류 회피
-        purified_str = service_account_json_str.strip().encode('utf-8', 'ignore').decode('utf-8')
+        purified_str = service_account_json_str.strip()
         
-        # 3. 줄 바꿈 및 이스케이프 문자 처리: 
-        # Secrets에 저장된 '\\n' (백슬래시 두 개)를 실제 줄 바꿈('\n')으로 치환
-        # json.loads()가 유효하게 인식하도록 준비
-        sa_info_str = purified_str.replace('\\n', '\n') 
+        # 3. ast.literal_eval을 사용한 안전한 파이썬 객체 해석
+        # Secrets에 따옴표가 있든 없든, 이스케이프가 잘못되었든 최대한 원본 복원 시도
+        try:
+            # 먼저 파이썬 객체(문자열)로 해석하여, Secrets의 외부 따옴표와 이스케이프 문제를 해결
+            sa_info_str = ast.literal_eval(purified_str)
+        except (ValueError, TypeError, SyntaxError):
+            # ast.literal_eval이 실패하면 (이미 순수 JSON 문자열인 경우) 원본 사용
+            sa_info_str = purified_str
+            
+        # 4. 줄 바꿈 문자 처리: Final Pass (모든 '\\n'을 '\n'으로 치환)
+        # 'Invalid \escape' 오류의 핵심 원인인 백슬래시 문제를 최종적으로 해결
+        # 이 코드는 단일 백슬래시든 이중 백슬래시든 최종적으로 '\n'을 얻어내도록 합니다.
+        sa_info_str = sa_info_str.replace('\\\\n', '\n').replace('\\n', '\n')
         
-        # 4. JSON 로드 시도
+        # 5. JSON 로드 시도
         sa_info = json.loads(sa_info_str)
 
-        # 5. Firebase Admin SDK 초기화
-        # 이미 초기화되었는지 확인 (st.cache_resource와 함께 중복 초기화 방지)
-        # firestore._app을 사용하여 앱이 초기화되었는지 확인
+        # 6. Firebase Admin SDK 초기화
         if not firestore._app:
             cred = credentials.Certificate(sa_info)
-            # 프로젝트 ID를 명시적으로 전달하여 초기화 충돌 방지
-            initialize_app(cred, {'projectId': sa_info.get("project_id")})
+            # 앱 이름을 지정하여 초기화 충돌 방지
+            initialize_app(cred, name="admin_app")
         
-        # 6. Firestore 클라이언트 반환 (Admin SDK 클라이언트 사용)
+        # 7. Firestore 클라이언트 반환
         db = firestore.client()
         return db, None
 
@@ -91,11 +98,9 @@ def save_index_to_firestore(db, vector_store, index_id="user_portfolio_rag"):
         encoded_data = {
             "faiss_data": base64.b64encode(faiss_bytes).decode('utf-8'),
             "metadata_data": base64.b64encode(metadata_bytes).decode('utf-8'),
-            # Admin SDK와 호환되는 SERVER_TIMESTAMP 사용
             "timestamp": gcp_firestore.SERVER_TIMESTAMP 
         }
         
-        # Admin SDK를 통해 Firestore에 접근 (관리자 권한으로 인증됨)
         db.collection("rag_indices").document(index_id).set(encoded_data)
         return True
     
@@ -108,7 +113,6 @@ def load_index_from_firestore(db, embeddings, index_id="user_portfolio_rag"):
     if not db: return None
 
     try:
-        # Admin SDK를 통해 Firestore에 접근
         doc = db.collection("rag_indices").document(index_id).get()
         if not doc.exists:
             return None 
@@ -465,64 +469,64 @@ if 'llm_init_error_msg' not in st.session_state: st.session_state.llm_init_error
 if 'firestore_load_success' not in st.session_state: st.session_state.firestore_load_success = False
 
 # 언어 설정 로드 (UI 출력 전 필수)
-L = LANG[st.session_state.language] 
+L = LANG[st.session_state.language] 
 API_KEY = os.environ.get("GEMINI_API_KEY")
 
 # =======================================================
 # 5. Streamlit UI 페이지 설정 (스크립트 내 첫 번째 ST 명령)
 # =======================================================
 # 이 라인이 st. 로 시작하는 함수 중 무조건 첫 번째로 실행되어야 합니다.
-st.set_page_config(page_title=L["title"], layout="wide") 
+st.set_page_config(page_title=L["title"], layout="wide") 
 
 # =======================================================
 # 6. 서비스 초기화 및 LLM/DB 로직 (페이지 설정 후 안전하게 실행)
 # =======================================================
 
-if 'llm' not in st.session_state: 
-    llm_init_error = None
-    if not API_KEY:
-        llm_init_error = L["llm_error_key"]
-    else:
-        try:
-            # LLM 및 Embeddings 초기화
-            st.session_state.llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.7, google_api_key=API_KEY)
-            st.session_state.embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=API_KEY)
-            st.session_state.is_llm_ready = True
-            
-            # ⭐⭐ Admin SDK 클라이언트 초기화로 변경 (JSON 파싱 강화 버전) ⭐⭐
-            db, error_message = initialize_firestore_admin() 
-            st.session_state.firestore_db = db
-            
-            if error_message:
-                # Admin SDK 초기화 실패 시 에러 메시지를 LLM 에러 메시지에 포함
-                llm_init_error = f"{L['llm_error_init']} (DB Auth Error: {error_message})"
-            
-            # DB 로딩 로직
-            if db and 'conversation_chain' not in st.session_state:
-                # DB 로딩 시도
-                loaded_index = load_index_from_firestore(db, st.session_state.embeddings)
-                
-                if loaded_index:
-                    st.session_state.conversation_chain = get_rag_chain(loaded_index)
-                    st.session_state.is_rag_ready = True
-                    st.session_state.firestore_load_success = True
-                else:
-                    st.session_state.firestore_load_success = False
-            
-        except Exception as e:
-            llm_init_error = f"{L['llm_error_init']} {e}"
-            st.session_state.is_llm_ready = False
-    
-    if llm_init_error:
-        st.session_state.is_llm_ready = False
-        st.session_state.llm_init_error_msg = llm_init_error # 메시지를 세션에 저장
+if 'llm' not in st.session_state: 
+    llm_init_error = None
+    if not API_KEY:
+        llm_init_error = L["llm_error_key"]
+    else:
+        try:
+            # LLM 및 Embeddings 초기화
+            st.session_state.llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.7, google_api_key=API_KEY)
+            st.session_state.embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=API_KEY)
+            st.session_state.is_llm_ready = True
+            
+            # ⭐⭐ Admin SDK 클라이언트 초기화로 변경 (JSON 파싱 강화 버전) ⭐⭐
+            db, error_message = initialize_firestore_admin() 
+            st.session_state.firestore_db = db
+            
+            if error_message:
+                # Admin SDK 초기화 실패 시 에러 메시지를 LLM 에러 메시지에 포함
+                llm_init_error = f"{L['llm_error_init']} (DB Auth Error: {error_message})"
+            
+            # DB 로딩 로직
+            if db and 'conversation_chain' not in st.session_state:
+                # DB 로딩 시도
+                loaded_index = load_index_from_firestore(db, st.session_state.embeddings)
+                
+                if loaded_index:
+                    st.session_state.conversation_chain = get_rag_chain(loaded_index)
+                    st.session_state.is_rag_ready = True
+                    st.session_state.firestore_load_success = True
+                else:
+                    st.session_state.firestore_load_success = False
+            
+        except Exception as e:
+            llm_init_error = f"{L['llm_error_init']} {e}"
+            st.session_state.is_llm_ready = False
+    
+    if llm_init_error:
+        st.session_state.is_llm_ready = False
+        st.session_state.llm_init_error_msg = llm_init_error # 메시지를 세션에 저장
 
 # 나머지 세션 상태 초기화
 if "memory" not in st.session_state:
-    st.session_state.memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+    st.session_state.memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
 
 if "embedding_cache" not in st.session_state:
-    st.session_state.embedding_cache = {}
+    st.session_state.embedding_cache = {}
 
 # ================================
 # 7. 초기화 오류 메시지 출력 및 DB 상태 알림
@@ -530,13 +534,13 @@ if "embedding_cache" not in st.session_state:
 
 # ⭐⭐ 초기화 오류 메시지 출력 (st.set_page_config 이후에 안전하게) ⭐⭐
 if st.session_state.llm_init_error_msg:
-    st.error(st.session_state.llm_init_error_msg)
-    
+    st.error(st.session_state.llm_init_error_msg)
+    
 if st.session_state.get('firestore_db'):
-    if st.session_state.get('firestore_load_success', False):
-        st.success("✅ RAG 인덱스가 데이터베이스에서 성공적으로 로드되었습니다!")
-    elif not st.session_state.get('is_rag_ready', False):
-        st.info("데이터베이스에서 기존 RAG 인덱스를 찾을 수 없습니다. 파일을 업로드하여 새로 만드세요.")
+    if st.session_state.get('firestore_load_success', False):
+        st.success("✅ RAG 인덱스가 데이터베이스에서 성공적으로 로드되었습니다!")
+    elif not st.session_state.get('is_rag_ready', False):
+        st.info("데이터베이스에서 기존 RAG 인덱스를 찾을 수 없습니다. 파일을 업로드하여 새로 만드세요.")
 
 
 # ================================
@@ -544,68 +548,68 @@ if st.session_state.get('firestore_db'):
 # ================================
 
 with st.sidebar:
-    selected_lang_key = st.selectbox(
-        L["lang_select"],
-        options=['ko', 'en', 'ja'],
-        index=['ko', 'en', 'ja'].index(st.session_state.language),
-        format_func=lambda x: {"ko": "한국어", "en": "English", "ja": "日本語"}[x],
-    )
-    
-    if selected_lang_key != st.session_state.language:
-        st.session_state.language = selected_lang_key
-        st.rerun() 
-    
-    L = LANG[st.session_state.language] 
-    
-    st.title(L["sidebar_title"])
-    st.markdown("---")
-    
-    uploaded_files_widget = st.file_uploader(
-        L["file_uploader"],
-        type=["pdf","txt","html"],
-        accept_multiple_files=True
-    )
-    
-    if uploaded_files_widget:
-        st.session_state.uploaded_files_state = uploaded_files_widget
-    elif 'uploaded_files_state' not in st.session_state:
-        st.session_state.uploaded_files_state = None
-    
-    files_to_process = st.session_state.uploaded_files_state if st.session_state.uploaded_files_state else []
-    
-    if files_to_process and st.session_state.is_llm_ready:
-        if st.button(L["button_start_analysis"], key="start_analysis"):
-            with st.spinner(f"자료 분석 및 학습 DB 구축 중..."):
-                text_chunks = get_document_chunks(files_to_process)
-                vector_store = get_vector_store(text_chunks)
-                
-                if vector_store:
-                    # RAG 인덱스가 성공적으로 생성되면 Firestore에 저장 시도
-                    db = st.session_state.firestore_db
-                    save_success = False
-                    if db:
-                        save_success = save_index_to_firestore(db, vector_store)
-                    
-                    if save_success:
-                        st.success(L["embed_success"].format(count=len(text_chunks)) + " (DB 저장 완료)")
-                    else:
-                        st.success(L["embed_success"].format(count=len(text_chunks)) + " (DB 저장 실패)")
+    selected_lang_key = st.selectbox(
+        L["lang_select"],
+        options=['ko', 'en', 'ja'],
+        index=['ko', 'en', 'ja'].index(st.session_state.language),
+        format_func=lambda x: {"ko": "한국어", "en": "English", "ja": "日本語"}[x],
+    )
+    
+    if selected_lang_key != st.session_state.language:
+        st.session_state.language = selected_lang_key
+        st.rerun() 
+    
+    L = LANG[st.session_state.language] 
+    
+    st.title(L["sidebar_title"])
+    st.markdown("---")
+    
+    uploaded_files_widget = st.file_uploader(
+        L["file_uploader"],
+        type=["pdf","txt","html"],
+        accept_multiple_files=True
+    )
+    
+    if uploaded_files_widget:
+        st.session_state.uploaded_files_state = uploaded_files_widget
+    elif 'uploaded_files_state' not in st.session_state:
+        st.session_state.uploaded_files_state = None
+    
+    files_to_process = st.session_state.uploaded_files_state if st.session_state.uploaded_files_state else []
+    
+    if files_to_process and st.session_state.is_llm_ready:
+        if st.button(L["button_start_analysis"], key="start_analysis"):
+            with st.spinner(f"자료 분석 및 학습 DB 구축 중..."):
+                text_chunks = get_document_chunks(files_to_process)
+                vector_store = get_vector_store(text_chunks)
+                
+                if vector_store:
+                    # RAG 인덱스가 성공적으로 생성되면 Firestore에 저장 시도
+                    db = st.session_state.firestore_db
+                    save_success = False
+                    if db:
+                        save_success = save_index_to_firestore(db, vector_store)
+                    
+                    if save_success:
+                        st.success(L["embed_success"].format(count=len(text_chunks)) + " (DB 저장 완료)")
+                    else:
+                        st.success(L["embed_success"].format(count=len(text_chunks)) + " (DB 저장 실패)")
 
-                    st.session_state.conversation_chain = get_rag_chain(vector_store)
-                    st.session_state.is_rag_ready = True
-                else:
-                    st.session_state.is_rag_ready = False
-                    st.error(L["embed_fail"])
+                    st.session_state.conversation_chain = get_rag_chain(vector_store)
+                    st.session_state.is_rag_ready = True
+                else:
+                    st.session_state.is_rag_ready = False
+                    st.error(L["embed_fail"])
 
-    else:
-        st.session_state.is_rag_ready = False
-        st.warning(L.get("warning_no_files", "먼저 학습 자료를 업로드하세요.")) 
+    else:
+        st.session_state.is_rag_ready = False
+        st.warning(L.get("warning_no_files", "먼저 학습 자료를 업로드하세요.")) 
 
-    st.markdown("---")
-    feature_selection = st.radio(
-        L["content_tab"], 
-        [L["rag_tab"], L["content_tab"], L["lstm_tab"]]
-    )
+    st.markdown("---")
+    feature_selection = st.radio(
+        L["content_tab"], 
+        [L["rag_tab"], L["content_tab"], L["lstm_tab"]]
+    )
 
 st.title(L["title"])
 
@@ -613,111 +617,111 @@ st.title(L["title"])
 # 9. 기능별 페이지 구현
 # ================================
 if feature_selection == L["rag_tab"]:
-    st.header(L["rag_header"])
-    st.markdown(L["rag_desc"])
-    if st.session_state.get('is_rag_ready', False) and st.session_state.get('conversation_chain'):
-        if "messages" not in st.session_state:
-            st.session_state.messages = []
+    st.header(L["rag_header"])
+    st.markdown(L["rag_desc"])
+    if st.session_state.get('is_rag_ready', False) and st.session_state.get('conversation_chain'):
+        if "messages" not in st.session_state:
+            st.session_state.messages = []
 
-        for message in st.session_state.messages:
-            with st.chat_message(message["role"]):
-                st.markdown(message["content"])
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
 
-        if prompt := st.chat_input(L["rag_input_placeholder"]):
-            st.session_state.messages.append({"role":"user","content":prompt})
-            with st.chat_message("user"):
-                st.markdown(prompt)
-            with st.chat_message("assistant"):
-                with st.spinner(f"답변 생성 중..." if st.session_state.language == 'ko' else "Generating response..."):
-                    try:
-                        response = st.session_state.conversation_chain.invoke({"question":prompt})
-                        answer = response.get('answer','응답을 생성할 수 없습니다.' if st.session_state.language == 'ko' else 'Could not generate response.')
-                        st.markdown(answer)
-                        st.session_state.messages.append({"role":"assistant","content":answer})
-                    except Exception as e:
-                        st.error(f"챗봇 오류: {e}")
-                        st.session_state.messages.append({"role":"assistant","content":"오류 발생" if st.session_state.language == 'ko' else "An error occurred"})
-    else:
-        st.warning(L["warning_rag_not_ready"])
+        if prompt := st.chat_input(L["rag_input_placeholder"]):
+            st.session_state.messages.append({"role":"user","content":prompt})
+            with st.chat_message("user"):
+                st.markdown(prompt)
+            with st.chat_message("assistant"):
+                with st.spinner(f"답변 생성 중..." if st.session_state.language == 'ko' else "Generating response..."):
+                    try:
+                        response = st.session_state.conversation_chain.invoke({"question":prompt})
+                        answer = response.get('answer','응답을 생성할 수 없습니다.' if st.session_state.language == 'ko' else 'Could not generate response.')
+                        st.markdown(answer)
+                        st.session_state.messages.append({"role":"assistant","content":answer})
+                    except Exception as e:
+                        st.error(f"챗봇 오류: {e}")
+                        st.session_state.messages.append({"role":"assistant","content":"오류 발생" if st.session_state.language == 'ko' else "An error occurred"})
+    else:
+        st.warning(L["warning_rag_not_ready"])
 
 elif feature_selection == L["content_tab"]:
-    st.header(L["content_header"])
-    st.markdown(L["content_desc"])
+    st.header(L["content_header"])
+    st.markdown(L["content_desc"])
 
-    if st.session_state.is_llm_ready:
-        topic = st.text_input(L["topic_label"])
-        
-        level_map = dict(zip(L["level_options"], ["Beginner", "Intermediate", "Advanced"]))
-        content_map = dict(zip(L["content_options"], ["summary", "quiz", "example"]))
-        
-        level_display = st.selectbox(L["level_label"], L["level_options"])
-        content_type_display = st.selectbox(L["content_type_label"], L["content_options"])
+    if st.session_state.is_llm_ready:
+        topic = st.text_input(L["topic_label"])
+        
+        level_map = dict(zip(L["level_options"], ["Beginner", "Intermediate", "Advanced"]))
+        content_map = dict(zip(L["content_options"], ["summary", "quiz", "example"]))
+        
+        level_display = st.selectbox(L["level_label"], L["level_options"])
+        content_type_display = st.selectbox(L["content_type_label"], L["content_options"])
 
-        level = level_map[level_display]
-        content_type = content_map[content_type_display]
+        level = level_map[level_display]
+        content_type = content_map[content_type_display]
 
-        if st.button(L["button_generate"]):
-            if topic:
-                target_lang = {"ko": "Korean", "en": "English", "ja": "Japanese"}[st.session_state.language]
-                
-                if content_type == 'quiz':
-                    full_prompt = f"""You are a professional AI coach at the {level} level.
+        if st.button(L["button_generate"]):
+            if topic:
+                target_lang = {"ko": "Korean", "en": "English", "ja": "Japanese"}[st.session_state.language]
+                
+                if content_type == 'quiz':
+                    full_prompt = f"""You are a professional AI coach at the {level} level.
 Please generate exactly 3 multiple-choice questions about the topic in {target_lang}.
 Your entire response MUST be a valid JSON object wrapped in ```json tags.
 The JSON must have a single key named 'quiz_questions', which is an array of objects.
 Each question object must contain: 'question' (string), 'options' (array of objects with 'option' (A,B,C,D) and 'text' (string)), 'correct_answer' (A,B,C, or D), and 'explanation' (string).
 
 Topic: {topic}"""
-                else:
-                    display_type_text = L["content_options"][L["content_options"].index(content_type_display)]
-                    full_prompt = f"""You are a professional AI coach at the {level} level.
+                else:
+                    display_type_text = L["content_options"][L["content_options"].index(content_type_display)]
+                    full_prompt = f"""You are a professional AI coach at the {level} level.
 Please generate clear and educational content in the requested {display_type_text} format based on the topic.
 The response MUST be strictly in {target_lang}.
 
 Topic: {topic}
 Requested Format: {display_type_text}"""
-                
-                
-                with st.spinner(f"Generating {content_type_display} for {topic}..."):
-                    
-                    quiz_data_raw = None
-                    try:
-                        response = st.session_state.llm.invoke(full_prompt)
-                        quiz_data_raw = response.content
-                        
-                        if content_type == 'quiz':
-                            quiz_data = clean_and_load_json(quiz_data_raw)
-                            
-                            if quiz_data:
-                                st.session_state.quiz_data = quiz_data
-                                st.session_state.current_question = 0
-                                st.session_state.quiz_submitted = False
-                                st.session_state.quiz_results = [None] * len(quiz_data.get('quiz_questions',[]))
-                                
-                                st.success(f"**{topic}** - **{content_type_display}** Result:")
-                            else:
-                                st.error(L["quiz_error_llm"])
-                                st.markdown(f"**{L['quiz_original_response']}**:")
-                                st.code(quiz_data_raw, language="json")
+                
+                
+                with st.spinner(f"Generating {content_type_display} for {topic}..."):
+                    
+                    quiz_data_raw = None
+                    try:
+                        response = st.session_state.llm.invoke(full_prompt)
+                        quiz_data_raw = response.content
+                        
+                        if content_type == 'quiz':
+                            quiz_data = clean_and_load_json(quiz_data_raw)
+                            
+                            if quiz_data:
+                                st.session_state.quiz_data = quiz_data
+                                st.session_state.current_question = 0
+                                st.session_state.quiz_submitted = False
+                                st.session_state.quiz_results = [None] * len(quiz_data.get('quiz_questions',[]))
+                                
+                                st.success(f"**{topic}** - **{content_type_display}** Result:")
+                            else:
+                                st.error(L["quiz_error_llm"])
+                                st.markdown(f"**{L['quiz_original_response']}**:")
+                                st.code(quiz_data_raw, language="json")
 
-                        else: # 일반 콘텐츠 (요약, 예제)
-                            st.success(f"**{topic}** - **{content_type_display}** Result:")
-                            st.markdown(response.content)
+                        else: # 일반 콘텐츠 (요약, 예제)
+                            st.success(f"**{topic}** - **{content_type_display}** Result:")
+                            st.markdown(response.content)
 
-                    except Exception as e:
-                        st.error(f"Content Generation Error: {e}")
-                        if quiz_data_raw:
-                            st.markdown(f"**{L['quiz_original_response']}**: {quiz_data_raw}")
+                    except Exception as e:
+                        st.error(f"Content Generation Error: {e}")
+                        if quiz_data_raw:
+                            st.markdown(f"**{L['quiz_original_response']}**: {quiz_data_raw}")
 
-            else:
-                st.warning(L["warning_topic"])
-    else:
-        st.error(L["llm_error_init"])
-        
-    # 퀴즈 풀이 렌더링을 메인 루프에서 조건부로 단 한 번 호출
-    is_quiz_ready = content_type == 'quiz' and 'quiz_data' in st.session_state and st.session_state.quiz_data
-    if is_quiz_ready and st.session_state.get('current_question', 0) < len(st.session_state.quiz_data.get('quiz_questions', [])):
-        render_interactive_quiz(st.session_state.quiz_data, st.session_state.language)
+            else:
+                st.warning(L["warning_topic"])
+    else:
+        st.error(L["llm_error_init"])
+        
+    # 퀴즈 풀이 렌더링을 메인 루프에서 조건부로 단 한 번 호출
+    is_quiz_ready = content_type == 'quiz' and 'quiz_data' in st.session_state and st.session_state.quiz_data
+    if is_quiz_ready and st.session_state.get('current_question', 0) < len(st.session_state.quiz_data.get('quiz_questions', [])):
+        render_interactive_quiz(st.session_state.quiz_data, st.session_state.language)
 
 
 elif feature_selection == L["lstm_tab"]:
