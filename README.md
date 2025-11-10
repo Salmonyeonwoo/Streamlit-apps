@@ -34,3 +34,13 @@ Script for Japansese RAG version
 
 <img width="1872" height="730" alt="image" src="https://github.com/user-attachments/assets/d4aaf6bc-168c-4ed9-8bb9-38dde0759a6c" />
 
+Script for English RAG version
+
+<img width="1890" height="830" alt="image" src="https://github.com/user-attachments/assets/eb94594a-ff80-4609-b2af-ad2a3f9c0a7d" />
+
+Utilizing LSTM
+
+<img width="1836" height="751" alt="image" src="https://github.com/user-attachments/assets/7f8c6ffd-a0f0-40da-994d-6f06859e2520" />
+
+
+
