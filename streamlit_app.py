@@ -467,8 +467,8 @@ LANG = {
         "warning_no_files": "まず学習資料をアップロードしてください。",
         "warning_rag_not_ready": "RAGが準備されていません。資料をアップロードし、分析開始ボタンを押してください。",
         "quiz_fail_structure": "クイズのデータ構造が正しくありません。",
-        "select_answer": "答えを選択してください",
-        "check_answer": "答えを確認",
+        "select_answer": "正解を選択してください",
+        "check_answer": "正解を確認",
         "next_question": "次の質問",
         "correct_answer": "正解です! 🎉",
         "incorrect_answer": "不正解です。😞",
@@ -476,8 +476,8 @@ LANG = {
         "explanation": "解説",
         "quiz_complete": "クイズ完了!",
         "score": "スコア",
-        "retake_quiz": "クイズを再試행",
-        "quiz_error_llm": "퀴즈 생성 실패: LLM이 올바른 JSON 형식을 반환하지 않았습니다. LLM 응답 원본을 확인하세요。",
+        "retake_quiz": "クイズを再挑戦",
+        "quiz_error_llm": "LLMが正しいJSONの形式を読み取れませんでしたので、クイズの生成が失敗しました。",
         "quiz_original_response": "LLM 원본 응답"
     }
 }
