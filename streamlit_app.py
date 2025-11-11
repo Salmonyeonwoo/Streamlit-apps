@@ -23,7 +23,6 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.memory import ConversationBufferMemory
 from langchain.schema.document import Document
 import numpy as np
-import pandas as pd
 from bs4 import BeautifulSoup
 import matplotlib.pyplot as plt
 from tensorflow.keras.models import Sequential
@@ -157,7 +156,7 @@ def load_index_from_firestore(db, embeddings, index_id="user_portfolio_rag"):
         return None
 
 # ================================
-# 2. JSON/RAG/LSTM 함수 정의
+# 2. JSON/RAG/LSTM/TTS 함수 정의
 # ================================
 def clean_and_load_json(text):
     """LLM 응답 텍스트에서 JSON 객체만 정규표현식으로 추출하여 로드"""
@@ -171,44 +170,140 @@ def clean_and_load_json(text):
             return None
     return None
 
-def get_mock_response_data(lang_key, customer_type):
-    """API Key가 없을 때 사용할 가상 응대 데이터 (다국어 지원)"""
+def synthesize_and_play_audio(text_to_speak, api_key, current_lang_key):
+    """TTS API를 호출하고 오디오를 재생하는 JS 유틸리티를 Streamlit에 삽입합니다."""
     
-    # 선택된 언어와 고객 성향에 따른 톤 정의
-    if lang_key == 'ko':
-        tone = "공감 및 진정 (Tone: Empathy and Calmness)"
-        advice = "이 고객은 배송 지연에 대한 불만이 매우 높습니다. 먼저 진심으로 사과하고, 현재 상태를 투명하게 설명하며, 문제 해결을 위한 구체적인 다음 행동을 제시해야 합니다."
-        draft = f"""
-> 고객님, 먼저 주문하신 상품 배송이 늦어져 많이 불편하셨을 점 진심으로 사과드립니다. 고객님의 상황을 충분히 이해하고 있습니다.
-> 현재 시스템 상 확인된 바로는 [배송 지연 사유 설명]. 
-> 이 문제를 해결하기 위해, 저희가 [구체적인 해결책 1: 예: 담당 팀에 직접 연락] 및 [구체적인 해결책 2: 예: 오늘 중으로 상태 업데이트 재확인]을 진행하겠습니다.
-> 처리되는 대로 오늘 오후 [시간]까지 고객님께 **개별적으로** 연락드리겠습니다. 기다려주셔서 감사합니다.
-"""
-    elif lang_key == 'en':
-        tone = "Empathy and Calming Tone"
-        advice = "This customer is highly dissatisfied with the delivery delay. You must apologize sincerely, explain the status transparently, and provide concrete next steps to solve the problem."
-        draft = f"""
-> Dear Customer, I sincerely apologize for the inconvenience caused by the delay in delivering your order. I completely understand your frustration.
-> Our system indicates [Reason for delay]. 
-> To resolve this, we will proceed with [Specific Solution 1: e.g., contacting the dedicated team immediately] and [Specific Solution 2: e.g., re-confirming the status update by end of day].
-> We will contact you **personally** by [Time] this afternoon with an update. Thank you for your patience.
-"""
-    elif lang_key == 'ja':
-        tone = "共感と鎮静トーン (Tone: Empathy and Calming)"
-        advice = "このお客様は配送遅延に対して非常に不満を持っています。まずは心からお詫びし、現状を透明に説明し、問題解決のための具体的な次の一手を提示する必要があります。"
-        draft = f"""
-> お客様、ご注文商品の配送が遅れてしまい、大変ご迷惑をおかけしておりますことを心よりお詫び申し上げます。お客様のお気持ち、十分理解しております。
-> 現在システムで確認したところ、[遅延の理由を説明]。
-> この問題を解決するため、弊社にて[具体的な解決策1：例：担当チームに直接連絡]および[具体的な解決策2：例：本日中に再度状況を確認]をいたします。
-> 進捗があり次第、本日午後[時間]までに**個別にご連絡**差し上げます。今しばらくお待ちください。
-"""
+    lang = LANG[current_lang_key]
     
-    return {
-        "header": f"AIの対応アドバイス ({customer_type}向け)",
-        "advice": advice,
-        "draft_header": f"推奨される対応草案 ({tone})",
-        "draft": draft
-    }
+    # 1. JS 유틸리티 코드 (WAV 변환 및 API 호출)
+    tts_js_code = f"""
+    <script>
+    // Utility functions (Base64 to ArrayBuffer, PCM to WAV header)
+    const base64ToArrayBuffer = (base64) => {{
+        const binaryString = atob(base64);
+        const len = binaryString.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {{ bytes[i] = binaryString.charCodeAt(i); }}
+        return bytes.buffer;
+    }};
+
+    const pcmToWav = (pcm16, sampleRate = 24000) => {{
+        // Logic to convert PCM 16-bit to WAV format blob
+        const numChannels = 1;
+        const bitsPerSample = 16;
+        const byteRate = sampleRate * numChannels * (bitsPerSample / 8);
+        const blockAlign = numChannels * (bitsPerSample / 8);
+        const dataSize = pcm16.length * 2;
+        const buffer = new ArrayBuffer(44 + dataSize);
+        const view = new DataView(buffer);
+        let offset = 0;
+
+        // Write WAV header (RIFF, WAVE, fmt, data chunks)
+        view.setUint32(offset, 0x46464952, true); offset += 4; // "RIFF"
+        view.setUint32(offset, 36 + dataSize, true); offset += 4; // file length
+        view.setUint32(offset, 0x45564157, true); offset += 4; // "WAVE"
+        view.setUint32(offset, 0x20746d66, true); offset += 4; // "fmt "
+        view.setUint32(offset, 16, true); offset += 4; // chunk size 16
+        view.setUint16(offset, 1, true); offset += 2; // format tag 1 (PCM)
+        view.setUint16(offset, numChannels, true); offset += 2; // num channels
+        view.setUint32(offset, sampleRate, true); offset += 4; // sample rate
+        view.setUint32(offset, byteRate, true); offset += 4; // byte rate
+        view.setUint16(offset, blockAlign, true); offset += 2; // block align
+        view.setUint16(offset, bitsPerSample, true); offset += 2; // bits per sample
+        view.setUint32(offset, 0x61746164, true); offset += 4; // "data"
+        view.setUint32(offset, dataSize, true); offset += 4; // data size
+
+        // Write PCM data
+        for (let i = 0; i < pcm16.length; i++) {{
+            view.setInt16(offset, pcm16[i], true);
+            offset += 2;
+        }}
+
+        return new Blob([view], {{ type: 'audio/wav' }});
+    }};
+    
+    // API call wrapper (runs in the browser context)
+    window.speakText = async function(text) {{
+        const apiKey = "{api_key}";
+        const apiUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=" + apiKey;
+        const statusElement = document.getElementById('tts_status');
+        
+        // Use a firm voice (Kore) for professional tone
+        const payload = {{
+            contents: [{{ parts: [{{ text: text }}] }}],
+            generationConfig: {{
+                responseModalities: ["AUDIO"],
+                speechConfig: {{ voiceConfig: {{ prebuiltVoiceConfig: {{ voiceName: "Kore" }} }} }}
+            }},
+            model: "gemini-2.5-flash-preview-tts"
+        }};
+        
+        statusElement.innerText = '{lang.get("tts_status_generating", "오디오 생성 중...")}';
+        statusElement.style.backgroundColor = '#fff3e0';
+
+        try {{
+            const response = await fetch(apiUrl, {{
+                method: 'POST',
+                headers: {{ 'Content-Type': 'application/json' }},
+                body: JSON.stringify(payload)
+            }});
+
+            const result = await response.json();
+            const audioDataB64 = result?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+
+            if (audioDataB64) {{
+                const pcmData = base64ToArrayBuffer(audioDataB64);
+                const pcm16 = new Int16Array(pcmData);
+                const wavBlob = pcmToWav(pcm16, 24000);
+                
+                const audio = new Audio(URL.createObjectURL(wavBlob));
+                audio.play();
+
+                statusElement.innerText = '{lang.get("tts_status_success", "✅ 오디오 재생 완료!")}';
+                statusElement.style.backgroundColor = '#e8f5e9';
+
+            }} else {{
+                statusElement.innerText = '{lang.get("tts_status_fail", "❌ TTS 생성 실패 (데이터 없음)")}';
+                statusElement.style.backgroundColor = '#ffebee';
+                console.error("TTS API did not return audio data:", result);
+            }}
+
+        }} catch (error) {{
+            statusElement.innerText = '{lang.get("tts_status_error", "❌ TTS API 오류 발생")}';
+            statusElement.style.backgroundColor = '#ffebee';
+            console.error("TTS API Error:", error);
+        }} finally {{
+             setTimeout(() => {{ 
+                 statusElement.innerText = '{lang.get("tts_status_ready", "음성으로 듣기 준비됨")}';
+                 statusElement.style.backgroundColor = '#f0f0f0';
+             }}, 3000);
+        }}
+    }}
+    </script>
+    <div id="tts_status" style="padding: 5px; text-align: center; border-radius: 5px; background-color: #f0f0f0; margin-bottom: 10px;">{lang.get("tts_status_ready", "음성으로 듣기 준비됨")}</div>
+    """
+    # 2. TTS JS 유틸리티를 Streamlit 앱에 컴포넌트로 삽입
+    st.components.v1.html(tts_js_code, height=0, width=0)
+
+def render_tts_button(text_to_speak, api_key, current_lang_key):
+    """TTS 버튼 UI를 렌더링하고 클릭 시 JS 함수를 호출합니다."""
+    
+    # 1. TTS JS 컴포넌트 삽입 (상태 표시기 포함)
+    synthesize_and_play_audio(text_to_speak, api_key, current_lang_key)
+    
+    # 2. 버튼 렌더링
+    if api_key:
+        # 안전한 문자열 처리를 위해, 텍스트를 인코딩/이스케이프 처리
+        safe_text = text_to_speak.replace('\n', ' ').replace('"', '\\"').replace("'", "\\'")
+
+        st.markdown(f"""
+            <button onclick="window.speakText('{safe_text}')"
+                    style="background-color: #4338CA; color: white; padding: 10px 20px; border-radius: 5px; cursor: pointer; border: none; width: 100%; font-weight: bold; margin-bottom: 10px;">
+                {LANG[current_lang_key].get("button_listen_audio", "음성으로 듣기")} 🎧
+            </button>
+        """, unsafe_allow_html=True)
+    else:
+        st.warning(LANG[current_lang_key]["simulation_no_key_warning"] + " (TTS 불가)")
 
 
 def render_interactive_quiz(quiz_data, current_lang):
@@ -445,10 +540,18 @@ LANG = {
         "customer_type_options": ["일반적인 문의", "까다로운 고객", "매우 불만족스러운 고객"],
         "button_simulate": "응대 조언 요청",
         "simulation_warning_query": "고객 문의 내용을 입력해주세요。",
-        "simulation_no_key_warning": "⚠️ API Key가 없는 경우, 응답 생성은 실행되지 않습니다. (API Key가 없어도 UI 구성은 완료되었습니다.)",
+        "simulation_no_key_warning": "⚠️ API Key가 없는 경우, 응답 생성은 실행되지 않습니다. (UI 구성은 완료되었습니다.)",
         "simulation_advice_ready": "AI의 응대 조언이 준비되었습니다!",
         "simulation_advice_header": "AI의 응대 가이드라인",
         "simulation_draft_header": "추천 응대 초안",
+        
+        # ⭐ TTS 관련 텍스트
+        "button_listen_audio": "음성으로 듣기",
+        "tts_status_ready": "음성으로 듣기 준비됨",
+        "tts_status_generating": "오디오 생성 중...",
+        "tts_status_success": "✅ 오디오 재생 완료!",
+        "tts_status_fail": "❌ TTS 생성 실패 (데이터 없음)",
+        "tts_status_error": "❌ TTS API 오류 발생",
     },
     "en": {
         "title": "Personalized AI Study Coach",
@@ -508,6 +611,14 @@ LANG = {
         "simulation_advice_ready": "AI's response advice is ready!",
         "simulation_advice_header": "AI Response Guidelines",
         "simulation_draft_header": "Recommended Response Draft",
+        
+        # ⭐ TTS 관련 텍스트
+        "button_listen_audio": "Listen to Audio",
+        "tts_status_ready": "Ready to listen",
+        "tts_status_generating": "Generating audio...",
+        "tts_status_success": "✅ Audio playback complete!",
+        "tts_status_fail": "❌ TTS generation failed (No data)",
+        "tts_status_error": "❌ TTS API error occurred",
     },
     "ja": {
         "title": "パーソナライズAI学習コーチ",
@@ -567,6 +678,14 @@ LANG = {
         "simulation_advice_ready": "AIの対応アドバイスが利用可能です！",
         "simulation_advice_header": "AI対応ガイドライン",
         "simulation_draft_header": "推奨される対応草案",
+        
+        # ⭐ TTS 관련 텍스트
+        "button_listen_audio": "音声で聞く",
+        "tts_status_ready": "音声再生の準備ができました",
+        "tts_status_generating": "音声生成中...",
+        "tts_status_success": "✅ 音声再生完了!",
+        "tts_status_fail": "❌ TTS生成失敗（データなし）",
+        "tts_status_error": "❌ TTS APIエラーが発生しました",
     }
 }
 
@@ -582,6 +701,17 @@ if 'is_rag_ready' not in st.session_state: st.session_state.is_rag_ready = False
 if 'firestore_db' not in st.session_state: st.session_state.firestore_db = None
 if 'llm_init_error_msg' not in st.session_state: st.session_state.llm_init_error_msg = None
 if 'firestore_load_success' not in st.session_state: st.session_state.firestore_load_success = False
+
+# ⭐ 시뮬레이터 전용 상태 초기화 추가
+if "simulator_memory" not in st.session_state:
+    st.session_state.simulator_memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+if "simulator_messages" not in st.session_state:
+    st.session_state.simulator_messages = []
+if "initial_advice_provided" not in st.session_state:
+    st.session_state.initial_advice_provided = False
+if "simulator_chain" not in st.session_state:
+    st.session_state.simulator_chain = None
+
 
 # 언어 설정 로드 (UI 출력 전 필수)
 L = LANG[st.session_state.language] 
@@ -631,6 +761,13 @@ if 'llm' not in st.session_state:
                 else:
                     st.session_state.firestore_load_success = False
             
+            # 시뮬레이터 체인 초기화
+            st.session_state.simulator_chain = ConversationalRetrievalChain.from_llm(
+                llm=st.session_state.llm,
+                retriever=st.session_state.embeddings.as_retriever(), # 일반 임베딩 사용
+                memory=st.session_state.simulator_memory
+            )
+
         except Exception as e:
             llm_init_error = f"{L['llm_error_init']} {e}" 
             st.session_state.is_llm_ready = False
@@ -738,13 +875,17 @@ st.title(L["title"])
 if feature_selection == L["simulator_tab"]: 
     st.header(L["simulator_header"])
     st.markdown(L["simulator_desc"])
+    
+    # TTS 유틸리티 (상태 표시기 및 JS 함수)를 페이지 상단에 삽입
+    render_tts_button("", API_KEY, st.session_state.language) 
 
     if st.session_state.is_llm_ready:
         # 1. 고객 문의 입력 필드
         customer_query = st.text_area(
             L["customer_query_label"],
+            key="customer_query_text_area",
             height=150,
-            placeholder=L["customer_query_label"] + "..." # 다국어 Placeholder 적용
+            placeholder=L["customer_query_label"] + "..."
         )
 
         # 2. 고객 성향 선택
@@ -756,45 +897,110 @@ if feature_selection == L["simulator_tab"]:
         # 선택된 언어 키
         current_lang_key = st.session_state.language 
 
-        if st.button(L["button_simulate"]):
-            if customer_query:
-                st.info(f"{L['customer_type_label']}: {customer_type_display}")
-                
-                # LLM 키가 없는 경우의 처리 로직 (다국어화)
-                if not API_KEY:
-                    st.warning(L["simulation_no_key_warning"])
-                    st.error(f"{L['llm_error_key']} ({L['simulation_draft_header']} {L['content_options'][0]} 불가)") # API Key 오류 메시지도 다국어 적용
-                    
-                    # ⭐ 하드코딩된 가상 응답도 선택된 언어를 따르도록 수정
-                    mock_data = get_mock_response_data(current_lang_key, customer_type_display)
-                    
-                    st.success(mock_data["header"]) # AI의 응대 조언이 준비되었습니다!
-                    
-                    st.markdown(f"### {mock_data['advice']}")
-                    st.info(mock_data["advice"])
-
-                    st.markdown(f"### {mock_data['draft_header']}")
-                    st.markdown(mock_data["draft"])
-                    
-                
-                if API_KEY:
-                    with st.spinner(f"{customer_type_display} {L['button_simulate']} 중..."):
-                        # 여기에 LLM 호출 로직을 구현합니다 (API Key 발급 후)
-                        # 현재는 API Key가 없거나 LLM이 응답하지 않을 경우를 대비하여 하드코딩된 예시를 남깁니다.
-                        st.success(L["simulation_advice_ready"])
-                        
-                        # LLM이 응답하면 여기에 코드를 넣어주세요. (예시로 임시 가상 응답을 표시합니다)
-                        mock_data = get_mock_response_data(current_lang_key, customer_type_display)
-                        
-                        st.markdown(f"### {mock_data['advice']}")
-                        st.info(mock_data["advice"])
-
-                        st.markdown(f"### {mock_data['draft_header']}")
-                        st.markdown(mock_data["draft"])
-
-
-            else:
+        # 3. '응대 조언 요청' 버튼: 초기 시뮬레이션 시작 및 메모리 초기화
+        if st.button(L["button_simulate"], key="start_simulation"):
+            if not customer_query:
                 st.warning(L["simulation_warning_query"])
+                st.stop()
+            
+            # 초기화: 새 시뮬레이션을 시작할 때 메모리와 메시지 초기화
+            st.session_state.simulator_memory.clear()
+            st.session_state.simulator_messages = []
+            st.session_state.initial_advice_provided = False
+            
+            # 가상 고객의 첫 문의 메시지를 채팅 기록에 추가 (고객 역할)
+            st.session_state.simulator_messages.append({"role": "customer", "content": customer_query})
+            
+            # LLM 호출을 위한 프롬프트 구성 (초기 조언 요청)
+            initial_prompt = f"""
+            You are an AI Customer Support Supervisor. Your task is to provide expert guidance to a customer support agent.
+            The customer sentiment is: {customer_type_display}.
+            The customer's initial inquiry is: "{customer_query}"
+            
+            Based on this, provide a concise but compassionate recommended response draft and crucial advice on the tone and strategy for dealing with this specific sentiment. 
+            The response must be strictly in {LANG[current_lang_key]['lang_select']}.
+            """
+            
+            # API Key가 없는 경우의 처리 로직 (다국어화)
+            if not API_KEY:
+                # 가상 응답을 메시지 목록에 추가 (AI 슈퍼바이저 역할)
+                mock_data = get_mock_response_data(current_lang_key, customer_type_display)
+                
+                # 시뮬레이터 메시지에 AI의 초기 조언 추가
+                ai_advice_text = f"### {mock_data['advice']}\n\n{mock_data['draft']}"
+                st.session_state.simulator_messages.append({"role": "supervisor", "content": ai_advice_text})
+                
+                st.session_state.initial_advice_provided = True
+                st.rerun() 
+            
+            if API_KEY:
+                 # 실제 LLM 호출 로직 (Key 발급 후 사용)
+                with st.spinner("AI 슈퍼바이저 조언 생성 중..."):
+                    try:
+                        response = st.session_state.llm.invoke(initial_prompt)
+                        ai_advice_text = response.content
+                        st.session_state.simulator_messages.append({"role": "supervisor", "content": ai_advice_text})
+                        st.session_state.initial_advice_provided = True
+                        st.rerun() 
+                    except Exception as e:
+                        st.error(f"AI 조언 생성 중 오류 발생: {e}")
+        
+        # 4. 시뮬레이션 채팅 기록 표시
+        st.markdown("---")
+        st.subheader(f"{L['simulator_tab']} {L['simulation_advice_header']}")
+        
+        # 채팅 기록 렌더링
+        for message in st.session_state.simulator_messages:
+            if message["role"] == "customer":
+                with st.chat_message("user", avatar="🙋"):
+                    st.markdown(message["content"])
+            elif message["role"] == "supervisor":
+                with st.chat_message("assistant", avatar="🤖"):
+                    st.markdown(message["content"])
+                    # TTS 버튼 추가 (AI 조언 부분만)
+                    if st.session_state.initial_advice_provided:
+                        render_tts_button(message["content"], API_KEY, st.session_state.language)
+            elif message["role"] == "agent_response":
+                 with st.chat_message("user", avatar="🧑‍💻"):
+                    st.markdown(message["content"])
+            elif message["role"] == "customer_rebuttal":
+                 with st.chat_message("assistant", avatar="😠"):
+                    st.markdown(message["content"])
+
+        # 5. 대화형 시뮬레이션 진행 (추가 채팅)
+        if st.session_state.initial_advice_provided:
+            
+            # LLM에게 고객의 재반박을 생성하도록 요청하는 프롬프트
+            if not st.session_state.simulator_messages or st.session_state.simulator_messages[-1]['role'] == 'supervisor':
+                 # API Key가 있다면, 고객의 재반박을 LLM에게 요청합니다.
+                if API_KEY:
+                    if st.button("고객의 재반박 요청 (LLM 호출)", key="request_rebuttal"):
+                        # 이전 대화 기록을 LLM에게 전달하여 상황에 맞는 재반박을 요청
+                        rebuttal_prompt = f"""
+                        Roleplay as the customer ({customer_type_display}) who is still unsatisfied with the previous response provided by the agent. 
+                        Generate a short, challenging, and emotional rebuttal based on the entire chat history. 
+                        Do not provide a resolution. Use the language: {LANG[current_lang_key]['lang_select']}.
+                        """
+                        # memory를 활용하여 대화 기록을 LLM에게 전달
+                        full_conversation_history = st.session_state.simulator_memory.buffer_as_str
+                        
+                        with st.spinner("고객의 재반박 생성 중..."):
+                            rebuttal_response = st.session_state.llm.invoke(f"{full_conversation_history}\n\n{rebuttal_prompt}")
+                            st.session_state.simulator_messages.append({"role": "customer_rebuttal", "content": rebuttal_response.content})
+                            st.session_state.simulator_memory.chat_memory.add_user_message(rebuttal_response.content) # 고객 재반박을 메모리에 추가
+                            st.rerun()
+                else:
+                    st.warning("API Key가 없기 때문에 대화형 시뮬레이션(고객 재반박 생성)은 불가능합니다. Key 발급 후 이 기능을 사용해 주세요.")
+                    
+
+            # 에이전트(사용자)가 고객에게 응답할 차례
+            if st.session_state.simulator_messages and st.session_state.simulator_messages[-1]['role'] == 'customer_rebuttal':
+                agent_response = st.chat_input("에이전트로서 고객에게 응답하세요 (재반박 대응)")
+                if agent_response:
+                    st.session_state.simulator_messages.append({"role": "agent_response", "content": agent_response})
+                    st.session_state.simulator_memory.chat_memory.add_user_message(agent_response) # 에이전트 응답을 메모리에 추가
+                    st.rerun()
+
 
     else:
         # LLM 초기화 자체에 문제가 있을 경우의 오류 메시지 (다국어)
