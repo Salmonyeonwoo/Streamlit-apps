@@ -15,7 +15,7 @@ from firebase_admin import credentials, firestore, initialize_app, get_app
 # Admin SDK의 firestore와 Google Cloud SDK의 firestore를 구분하기 위해 alias 사용
 from google.cloud import firestore as gcp_firestore
 
-# ConversationChain 사용을 위해 import 추가 (ConversationalRetrievalChain 대신)
+# ConversationChain 사용을 위해 import 추가
 from langchain.chains import ConversationalRetrievalChain, ConversationChain
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
 from langchain_community.vectorstores import FAISS
@@ -165,6 +165,7 @@ def synthesize_and_play_audio(current_lang_key):
     
     tts_js_code = f"""
     <script>
+    // Web Speech API는 navigator/window 객체에 존재합니다.
     if (!window.speechSynthesis) {{
         document.getElementById('tts_status').innerText = '❌ TTS Not Supported';
     }}
@@ -177,10 +178,6 @@ def synthesize_and_play_audio(current_lang_key):
         
         utterance.lang = '{lang_code}'; 
         
-        // Use a specific voice if available (optional)
-        // const voices = window.speechSynthesis.getVoices();
-        // utterance.voice = voices.find(v => v.lang === '{lang_code}') || voices[0];
-
         utterance.onstart = () => {{
             statusElement.innerText = '{LANG[current_lang_key].get("tts_status_generating", "오디오 생성 중...")}';
             statusElement.style.backgroundColor = '#fff3e0';
@@ -202,7 +199,7 @@ def synthesize_and_play_audio(current_lang_key):
              setTimeout(() => {{ 
                  statusElement.innerText = '{LANG[current_lang_key].get("tts_status_ready", "음성으로 듣기 준비됨")}';
                  statusElement.style.backgroundColor = '#f0f0f0';
-             }}, 3000);
+             }}, 3999);
         }};
 
         window.speechSynthesis.cancel(); // Stop any current speech
@@ -215,8 +212,6 @@ def synthesize_and_play_audio(current_lang_key):
 
 def render_tts_button(text_to_speak, current_lang_key):
     """TTS 버튼 UI를 렌더링하고 클릭 시 JS 함수를 호출합니다."""
-    
-    # TTS는 이제 API Key 없이 클라이언트에서 작동합니다.
     
     # 줄 바꿈을 공백으로 변환하고, 따옴표를 이스케이프 처리
     safe_text = text_to_speak.replace('\n', ' ').replace('"', '\\"').replace("'", "\\'")
@@ -730,7 +725,7 @@ if 'llm' not in st.session_state:
             sa_info, error_message = _get_admin_credentials()
             
             if error_message:
-                llm_init_error = f"{L['llm_error_init']} (DB Auth Error: {error_message})" 
+                llm_init_error = f"{L['llm_init_error']} (DB Auth Error: {error_message})" 
             elif sa_info:
                 db = initialize_firestore_admin() 
                 st.session_state.firestore_db = db
@@ -750,14 +745,14 @@ if 'llm' not in st.session_state:
                 else:
                     st.session_state.firestore_load_success = False
             
-            # 시뮬레이터 체인 초기화 (ConversationalRetrievalChain 대신 Pure ConversationChain 사용)
+            # 시뮬레이터 체인 초기화 (순수 ConversationChain 사용)
             st.session_state.simulator_chain = ConversationChain(
                 llm=st.session_state.llm,
                 memory=st.session_state.simulator_memory
             )
 
         except Exception as e:
-            # LLM 초기화 오류 처리 (KeyError 방지)
+            # LLM 초기화 오류 처리 
             llm_init_error = f"{L['llm_error_init']} {e}" 
             st.session_state.is_llm_ready = False
     
@@ -871,7 +866,7 @@ if feature_selection == L["simulator_tab"]:
     
     # TTS JS 유틸리티를 페이지 로드 시 단 한 번만 삽입 (TTS 함수가 글로벌로 정의되도록)
     if "tts_js_loaded" not in st.session_state:
-         synthesize_and_play_audio(st.session_state.language) # API Key 제거됨
+         synthesize_and_play_audio(st.session_state.language) # API Key 없이 작동
          st.session_state.tts_js_loaded = True
 
 
@@ -953,9 +948,9 @@ if feature_selection == L["simulator_tab"]:
                             st.error(L['llm_error_init'] + " (시뮬레이터 체인 초기화 실패)")
                             st.stop()
 
-                        # ConversationChain의 invoke는 'input' 키를 사용합니다.
-                        response = st.session_state.simulator_chain.invoke({"input": initial_prompt})
-                        ai_advice_text = response.get('response', L['tts_status_error'])
+                        # ConversationChain의 predict는 'input'만 받으며, 결과는 문자열입니다.
+                        response_text = st.session_state.simulator_chain.predict(input=initial_prompt)
+                        ai_advice_text = response_text
                         
                         st.session_state.simulator_messages.append({"role": "supervisor", "content": ai_advice_text})
                         st.session_state.initial_advice_provided = True
@@ -1031,9 +1026,8 @@ if feature_selection == L["simulator_tab"]:
                     """
                     
                     with st.spinner("고객의 반응 생성 중..."):
-                        # ConversationChain의 invoke는 'input' 키를 사용합니다.
-                        response = st.session_state.simulator_chain.invoke({"input": next_reaction_prompt})
-                        customer_reaction = response.get('response', L['tts_status_error'])
+                        # ConversationChain의 predict는 'input' 키를 사용합니다.
+                        customer_reaction = st.session_state.simulator_chain.predict(input=next_reaction_prompt)
                         
                         # 긍정적 종료 키워드 확인 (대소문자 무시)
                         positive_keywords = ["감사", "thank you", "ありがとう", L['customer_positive_response'].lower().split('/')[-1].strip()]
