@@ -73,7 +73,7 @@ def initialize_firestore_admin():
     firebase_config = json.loads(st.secrets["FIREBASE_SERVICE_ACCOUNT_JSON"])
     
     try:
-        cred = credentials.Certificate("streamlit-app-access-e20ca-firebase-adminsdk-fbsvc-692c690acf.json")
+        cred = credentials.Certificate("flutter-ai-playground-32f17-firebase-adminsdk-fbsvc-f7240defd0.json")
         initialize_app(cred)
         st.session_state["db"] = firestore.client()
         st.success("✅ Firebase Admin SDK 초기화 완료!")
