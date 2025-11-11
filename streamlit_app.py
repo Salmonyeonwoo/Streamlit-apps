@@ -162,16 +162,14 @@ def clean_and_load_json(text):
 def synthesize_and_play_audio(current_lang_key):
     """TTS API 대신 Web Speech API를 위한 JS 유틸리티를 Streamlit에 삽입합니다."""
     
-    lang_code = {"ko": "ko-KR", "en": "en-US", "ja": "ja-JP"}.get(current_lang_key, "en-US")
-    
     # 템플릿 리터럴 내부에서 L 딕셔너리를 직접 참조할 수 없으므로, 하드코딩된 값 사용
     ko_ready = "음성으로 듣기 준비됨"
     en_ready = "Ready to listen"
     ja_ready = "音声再生の準備ができました"
 
+    # TTS 상태 텍스트를 파이썬 딕셔너리에서 가져오도록 수정
     tts_js_code = f"""
     <script>
-    // Web Speech API는 navigator/window 객체에 존재합니다.
     if (!window.speechSynthesis) {{
         document.getElementById('tts_status').innerText = '❌ TTS Not Supported';
     }}
@@ -185,14 +183,29 @@ def synthesize_and_play_audio(current_lang_key):
         // 동적으로 언어 코드 설정
         const langCode = {{ "ko": "ko-KR", "en": "en-US", "ja": "ja-JP" }}[langKey] || "en-US";
         utterance.lang = langCode; 
-        
-        // 동적으로 준비 상태 메시지 설정
+
+        // 동적으로 준비 상태 메시지 설정 (L 딕셔너리 값을 직접 사용)
         const getReadyText = (key) => {{
             if (key === 'ko') return '{ko_ready}';
             if (key === 'en') return '{en_ready}';
             if (key === 'ja') return '{ja_ready}';
             return '{en_ready}';
         }};
+
+        // ⭐ 음성 로드 및 재생 안정성 강화: 음성 목록이 로드될 때까지 기다립니다.
+        const setVoice = () => {{
+            const voices = window.speechSynthesis.getVoices();
+            if (voices.length > 0) {{
+                // 현재 언어 코드와 일치하는 음성을 찾거나, 첫 번째 음성을 사용
+                utterance.voice = voices.find(v => v.lang.startsWith(langCode.substring(0, 2))) || voices[0];
+            }}
+        }};
+
+        // 브라우저에 따라 voices가 비동기적으로 로드될 수 있습니다.
+        if (window.speechSynthesis.onvoiceschanged !== undefined) {{
+            window.speechSynthesis.onvoiceschanged = setVoice;
+        }}
+        setVoice(); // 초기 시도
 
         utterance.onstart = () => {{
             statusElement.innerText = '{LANG[current_lang_key].get("tts_status_generating", "오디오 생성 중...")}';
@@ -629,7 +642,7 @@ LANG = {
         "rag_desc": "アップロードされたドキュメントに基づいて質問に回答します。",
         "rag_input_placeholder": "学習資料について質問してください",
         "llm_error_key": "⚠️ 警告: GEMINI APIキーが設定されていません。Streamlit Secretsに'GEMINI_API_KEY'를 설정해주세요。",
-        "llm_error_init": "LLM初期化エラー：APIキーを確認してください。",
+        "llm_error_init": "LLM 초기화 오류: APIキーを確認してください。",
         "content_header": "カスタム学習コンテンツ生成",
         "content_desc": "学習テーマと難易度に合わせてコンテンツを生成します。",
         "topic_label": "学習テーマ",
