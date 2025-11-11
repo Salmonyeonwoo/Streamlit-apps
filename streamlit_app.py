@@ -44,18 +44,22 @@ def _get_admin_credentials():
     
     service_account_data = st.secrets["FIREBASE_SERVICE_ACCOUNT_JSON"]
     
-    # 🌟🌟🌟 수정된 로직 시작 🌟🌟🌟
+    # 🌟🌟🌟 수정된 로직 시작: 딕셔너리(AttrDict) 타입을 표준 dict로 강제 변환 🌟🌟🌟
+    sa_info = None
+
     if isinstance(service_account_data, str):
+        # 1. 문자열인 경우: JSON 로드
         try:
-            # 문자열인 경우: 줄 바꿈이나 탭을 포함한 문자열을 직접 JSON으로 로드합니다.
             sa_info = json.loads(service_account_data.strip())
         except json.JSONDecodeError as e:
-            # 구문 오류 시 자세한 오류 메시지를 반환합니다.
             return None, f"FIREBASE_SERVICE_ACCOUNT_JSON의 JSON 구문 오류입니다. 값을 확인하세요. 상세 오류: {e}"
-    # Streamlit Secrets에서 AttrDict (딕셔너리처럼 동작)로 반환될 경우를 처리
-    elif hasattr(service_account_data, 'get') and callable(service_account_data.get):
-        # get() 메서드를 가지는 객체(AttrDict, dict 포함)는 딕셔너리로 간주
-        sa_info = dict(service_account_data) # AttrDict를 표준 dict로 변환
+    elif hasattr(service_account_data, 'get'):
+        # 2. AttrDict (secrets.toml 딕셔너리 형식)인 경우: dict로 변환
+        # Streamlit Secrets에서 AttrDict 타입으로 반환되는 것을 처리
+        try:
+            sa_info = dict(service_account_data) # AttrDict를 표준 dict로 변환
+        except Exception:
+             return None, f"FIREBASE_SERVICE_ACCOUNT_JSON의 딕셔너리 변환 실패. 타입: {type(service_account_data)}"
     else:
         return None, f"FIREBASE_SERVICE_ACCOUNT_JSON의 형식이 올바르지 않습니다. (Type: {type(service_account_data)})"
     # 🌟🌟🌟 수정된 로직 끝 🌟🌟🌟
