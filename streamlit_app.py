@@ -752,14 +752,12 @@ if 'llm' not in st.session_state:
             st.session_state.simulator_chain = ConversationChain(
                 llm=st.session_state.llm,
                 memory=st.session_state.simulator_memory,
-                # Simple ConversationChain은 기본적으로 input/history를 사용합니다.
-                # memory_key가 "chat_history"이므로, prompt_input_key는 제거하고 memory_key를 history 변수에 연결해야 합니다.
-                # 기본 템플릿을 사용하여 history 변수 이름을 chat_history로 변경합니다.
+                # LangChain의 ConversationChain은 chat_history와 input 변수를 사용하도록 명시
                 prompt=PromptTemplate.from_template(
                     template="The following is a friendly conversation between a human and an AI. The AI is talkative and provides lots of specific details from its context.\n\n{chat_history}\nHuman: {input}\nAI:",
                     input_variables=["input", "chat_history"]
                 ),
-                input_key="input", # input_key 명시
+                input_key="input", # input_key 명시 (선택적이지만 명시적으로 유지)
             )
 
 
