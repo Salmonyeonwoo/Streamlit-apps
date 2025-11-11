@@ -10,14 +10,7 @@ import re
 import base64
 import io
 
-# ⭐ STT를 위한 추가 임포트 (WebRTC STT 컴포넌트)
-try:
-    from streamlit_mic_recorder import mic_recorder
-    STT_AVAILABLE = True
-except ImportError:
-    mic_recorder = None
-    STT_AVAILABLE = False
-
+# ⭐ STT 기능은 Streamlit Cloud 환경 문제로 인해 제거되었습니다.
 
 # ⭐ Admin SDK 관련 라이브러리 임포트
 from firebase_admin import credentials, firestore, initialize_app, get_app
@@ -281,7 +274,7 @@ def render_tts_button(text_to_speak, api_key, current_lang_key):
     """TTS 버튼 UI를 렌더링하고 클릭 시 JS 함수를 호출합니다."""
     
     # TTS JS 코드가 삽입되도록 함수 호출
-    synthesize_and_play_audio(text_to_speak, api_key, current_lang_key)
+    # synthesize_and_play_audio(text_to_speak, api_key, current_lang_key) # 이미 초기 로드 시 삽입됨
     
     if api_key:
         # 줄 바꿈을 공백으로 변환하고, 따옴표를 이스케이프 처리
@@ -351,7 +344,7 @@ def get_closing_messages(lang_key):
     if lang_key == 'ko':
         return {
             "additional_query": "또 다른 문의 사항은 없으신가요?",
-            "chat_closing": "고객님의 추가 문의 사항이 없어, 이 상담 채팅을 종료하겠습니다. 고객 문의 센터에 연락 주셔서 감사드리며, 추가로 저희 응대 솔루션에 대한 설문 조사에 응해 주시면 감사드리겠습니다. 추가 문의 사항이 있으시면 언제든지 연락 주십시오."
+            "chat_closing": "고객님의 추가 문의 사항이 없어, 이 상담 채팅을 종료하겠습니다. 고객 문의 센터에 연락 주셔서 감사드리며, 추가로 저희 응대 솔루션에 대한 설문 조사에 응해 주시면 감사하겠습니다. 추가 문의 사항이 있으시면 언제든지 연락 주십시오."
         }
     elif lang_key == 'en':
         return {
@@ -592,7 +585,7 @@ LANG = {
         # ⭐ 대화형/종료 메시지
         "button_mic_input": "음성 입력",
         "prompt_customer_end": "고객님의 추가 문의 사항이 없어, 이 상담 채팅을 종료하겠습니다.",
-        "prompt_survey": "고객 문의 센터에 연락 주셔서 감사드리며, 추가로 저희 응대 솔루션에 대한 설문 조사에 응해 주시면 감사드리겠습니다. 추가 문의 사항이 있으시면 언제든지 연락 주십시오.",
+        "prompt_survey": "고객 문의 센터에 연락 주셔서 감사드리며, 추가로 저희 응대 솔루션에 대한 설문 조사에 응해 주시면 감사하겠습니다. 추가 문의 사항이 있으시면 언제든지 연락 주십시오.",
         "customer_closing_confirm": "또 다른 문의 사항은 없으신가요?",
         "customer_positive_response": "좋은 말씀/친절한 상담 감사드립니다.",
         "button_end_chat": "응대 종료 (설문 조사 요청)"
@@ -799,13 +792,13 @@ if 'llm' not in st.session_state:
             sa_info, error_message = _get_admin_credentials()
             
             if error_message:
-                llm_init_error = f"{L['llm_error_init']} (DB Auth Error: {error_message})" 
+                llm_init_error = f"{L['llm_init_error']} (DB Auth Error: {error_message})" 
             elif sa_info:
                 db = initialize_firestore_admin() 
                 st.session_state.firestore_db = db
                 
                 if not db:
-                    llm_init_error = f"{L['llm_error_init']} (DB Client Error: Firebase Admin Init Failed)" 
+                    llm_init_error = f"{L['llm_init_error']} (DB Client Error: Firebase Admin Init Failed)" 
 
             # DB 로딩 로직
             if st.session_state.firestore_db and 'conversation_chain' not in st.session_state:
@@ -820,6 +813,7 @@ if 'llm' not in st.session_state:
                     st.session_state.firestore_load_success = False
             
             # 시뮬레이터 체인 초기화
+            # Retriever는 일단 임베딩으로 임시 설정 (RAG DB는 학습 자료 업로드 시 생성됨)
             st.session_state.simulator_chain = ConversationalRetrievalChain.from_llm(
                 llm=st.session_state.llm,
                 retriever=st.session_state.embeddings.as_retriever(), 
@@ -827,7 +821,7 @@ if 'llm' not in st.session_state:
             )
 
         except Exception as e:
-            # 810행 근처의 KeyError를 해결하기 위해 llm_init_error를 사용
+            # LLM 초기화 오류 처리 (KeyError 방지)
             llm_init_error = f"{L['llm_error_init']} {e}" 
             st.session_state.is_llm_ready = False
     
@@ -876,9 +870,7 @@ with st.sidebar:
     
     st.title(L["sidebar_title"])
 
-    # ⭐ STT 라이브러리 설치 경고를 사이드바에서 안전하게 표시
-    if not STT_AVAILABLE:
-        st.warning(f"{L['button_mic_input']} {L['llm_error_init'].split(':')[0]} ('streamlit-mic-recorder' 라이브러리 설치 필요)")
+    # ⭐ STT 기능 제거 후 경고는 제거됨
     
     st.markdown("---")
     
@@ -980,22 +972,7 @@ if feature_selection == L["simulator_tab"]:
             disabled=st.session_state.initial_advice_provided
         )
         
-        # 3. 음성 입력 (STT) 추가
-        if not st.session_state.initial_advice_provided and STT_AVAILABLE:
-            col_mic, col_temp = st.columns([1, 4])
-            with col_mic:
-                st.markdown(f"**{L['button_mic_input']}**")
-                audio_data = mic_recorder(
-                    start_prompt="🎙️",
-                    stop_prompt="⏹️",
-                    key='mic_input',
-                    just_once=True
-                )
-            
-            if audio_data and 'text' in audio_data and audio_data['text']:
-                st.session_state.customer_query_text_area = audio_data['text']
-                st.info(f"음성 입력 완료: {audio_data['text']}")
-                st.rerun()
+        # 3. 음성 입력 (STT) 제거됨 (환경적 제약)
 
         # 선택된 언어 키
         current_lang_key = st.session_state.language 
