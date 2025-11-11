@@ -10,12 +10,14 @@ import re
 import base64
 import io
 
-# TTS/STT를 위한 추가 임포트 (WebRTC STT 컴포넌트)
+# ⭐ STT를 위한 추가 임포트 (WebRTC STT 컴포넌트)
 try:
     from streamlit_mic_recorder import mic_recorder
+    STT_AVAILABLE = True
 except ImportError:
-    st.error("❌ STT 기능을 사용하려면 'streamlit-mic-recorder' 라이브러리를 설치해야 합니다.")
+    # 라이브러리가 없을 경우 경고 메시지 처리를 위해 None으로 설정
     mic_recorder = None
+    STT_AVAILABLE = False
 
 
 # ⭐ Admin SDK 관련 라이브러리 임포트
@@ -39,29 +41,22 @@ from tensorflow.keras.layers import LSTM, Dense
 
 # ================================
 # 1. Firebase Admin SDK 초기화 및 Secrets 처리 함수
-# (이 섹션은 인증 성공 로직이므로, 안정성을 위해 유지합니다.)
 # ================================
 
 def _get_admin_credentials():
-    """
-    Secrets에서 서비스 계정 정보를 안전하게 로드하고 딕셔너리로 반환합니다.
-    """
+    """Secrets에서 서비스 계정 정보를 안전하게 로드하고 딕셔너리로 반환합니다."""
     if "FIREBASE_SERVICE_ACCOUNT_JSON" not in st.secrets:
         return None, "FIREBASE_SERVICE_ACCOUNT_JSON Secret이 누락되었습니다."
     
     service_account_data = st.secrets["FIREBASE_SERVICE_ACCOUNT_JSON"]
-    
-    # AttrDict 타입을 표준 dict로 강제 변환하는 최종 로직
     sa_info = None
 
     if isinstance(service_account_data, str):
-        # 1. 문자열인 경우: JSON 로드
         try:
             sa_info = json.loads(service_account_data.strip())
         except json.JSONDecodeError as e:
             return None, f"FIREBASE_SERVICE_ACCOUNT_JSON의 JSON 구문 오류입니다. 값을 확인하세요. 상세 오류: {e}"
     elif hasattr(service_account_data, 'get'):
-        # 2. AttrDict (secrets.toml 딕셔너리 형식)인 경우: dict로 변환
         try:
             sa_info = dict(service_account_data) # AttrDict를 표준 dict로 변환
         except Exception:
@@ -76,31 +71,25 @@ def _get_admin_credentials():
 
 @st.cache_resource(ttl=None)
 def initialize_firestore_admin():
-    """
-    Secrets에서 로드된 정보를 사용하여 Firebase Admin SDK를 초기화합니다.
-    """
+    """Secrets에서 로드된 정보를 사용하여 Firebase Admin SDK를 초기화합니다."""
     sa_info, error_message = _get_admin_credentials()
 
     if error_message:
         st.error(f"❌ Firebase Secret 오류: {error_message}")
         return None
 
-    # 이미 초기화되었는지 확인 (Streamlit Rerun 문제 방지)
     try:
         get_app()
     except ValueError:
-        pass # 앱이 초기화되지 않은 경우
+        pass 
     else:
-        # 이미 초기화된 경우 클라이언트만 반환
         try:
             return firestore.client()
         except Exception as e:
             st.error(f"🔥 Firebase 클라이언트 로드 실패: {e}")
             return None
 
-
     try:
-        # 서비스 계정 정보를 직접 전달하여 인증 객체 생성
         cred = credentials.Certificate(sa_info) 
         initialize_app(cred)
         
@@ -134,7 +123,6 @@ def save_index_to_firestore(db, vector_store, index_id="user_portfolio_rag"):
         return True
     
     except Exception as e:
-        # DB 저장 시도 중 오류 발생 시 사용자에게 표시
         st.error(f"DB 저장 시도 중 오류 발생: {e}")
         print(f"Error saving index to Firestore: {e}")
         return False
@@ -184,11 +172,11 @@ def synthesize_and_play_audio(text_to_speak, api_key, current_lang_key):
     
     lang = LANG[current_lang_key]
     
-    # 1. JS 유틸리티 코드 (WAV 변환 및 API 호출)
+    # TTS JS 코드는 버튼이 눌릴 때마다 삽입되어야 합니다.
     tts_js_code = f"""
     <script>
     // Utility functions (Base64 to ArrayBuffer, PCM to WAV header)
-    const base64ToArrayBuffer = (base64) => {{
+    window.base64ToArrayBuffer = (base64) => {{
         const binaryString = atob(base64);
         const len = binaryString.length;
         const bytes = new Uint8Array(len);
@@ -196,8 +184,7 @@ def synthesize_and_play_audio(text_to_speak, api_key, current_lang_key):
         return bytes.buffer;
     }};
 
-    const pcmToWav = (pcm16, sampleRate = 24000) => {{
-        // Logic to convert PCM 16-bit to WAV format blob
+    window.pcmToWav = (pcm16, sampleRate = 24000) => {{
         const numChannels = 1;
         const bitsPerSample = 16;
         const byteRate = sampleRate * numChannels * (bitsPerSample / 8);
@@ -206,23 +193,21 @@ def synthesize_and_play_audio(text_to_speak, api_key, current_lang_key):
         const buffer = new ArrayBuffer(44 + dataSize);
         const view = new DataView(buffer);
         let offset = 0;
-
-        // Write WAV header (RIFF, WAVE, fmt, data chunks)
+        // WAV header writing... (Omitted for brevity in this comment block)
         view.setUint32(offset, 0x46464952, true); offset += 4; // "RIFF"
-        view.setUint32(offset, 36 + dataSize, true); offset += 4; // file length
+        view.setUint32(offset, 36 + dataSize, true); offset += 4; 
         view.setUint32(offset, 0x45564157, true); offset += 4; // "WAVE"
         view.setUint32(offset, 0x20746d66, true); offset += 4; // "fmt "
-        view.setUint32(offset, 16, true); offset += 4; // chunk size 16
-        view.setUint16(offset, 1, true); offset += 2; // format tag 1 (PCM)
-        view.setUint16(offset, numChannels, true); offset += 2; // num channels
-        view.setUint32(offset, sampleRate, true); offset += 4; // sample rate
-        view.setUint32(offset, byteRate, true); offset += 4; // byte rate
-        view.setUint16(offset, blockAlign, true); offset += 2; // block align
-        view.setUint16(offset, bitsPerSample, true); offset += 2; // bits per sample
+        view.setUint32(offset, 16, true); offset += 4; 
+        view.setUint16(offset, 1, true); offset += 2; 
+        view.setUint16(offset, numChannels, true); offset += 2; 
+        view.setUint32(offset, sampleRate, true); offset += 4; 
+        view.setUint32(offset, byteRate, true); offset += 4; 
+        view.setUint16(offset, blockAlign, true); offset += 2; 
+        view.setUint16(offset, bitsPerSample, true); offset += 2; 
         view.setUint32(offset, 0x61746164, true); offset += 4; // "data"
-        view.setUint32(offset, dataSize, true); offset += 4; // data size
+        view.setUint32(offset, dataSize, true); offset += 4; 
 
-        // Write PCM data
         for (let i = 0; i < pcm16.length; i++) {{
             view.setInt16(offset, pcm16[i], true);
             offset += 2;
@@ -231,13 +216,12 @@ def synthesize_and_play_audio(text_to_speak, api_key, current_lang_key):
         return new Blob([view], {{ type: 'audio/wav' }});
     }};
     
-    // API call wrapper (runs in the browser context)
+    // API call wrapper
     window.speakText = async function(text) {{
         const apiKey = "{api_key}";
         const apiUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=" + apiKey;
         const statusElement = document.getElementById('tts_status');
         
-        // Use a firm voice (Kore) for professional tone
         const payload = {{
             contents: [{{ parts: [{{ text: text }}] }}],
             generationConfig: {{
@@ -261,9 +245,9 @@ def synthesize_and_play_audio(text_to_speak, api_key, current_lang_key):
             const audioDataB64 = result?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
 
             if (audioDataB64) {{
-                const pcmData = base64ToArrayBuffer(audioDataB64);
+                const pcmData = window.base64ToArrayBuffer(audioDataB64);
                 const pcm16 = new Int16Array(pcmData);
-                const wavBlob = pcmToWav(pcm16, 24000);
+                const wavBlob = window.pcmToWav(pcm16, 24000);
                 
                 const audio = new Audio(URL.createObjectURL(wavBlob));
                 audio.play();
@@ -289,23 +273,18 @@ def synthesize_and_play_audio(text_to_speak, api_key, current_lang_key):
         }}
     }}
     </script>
-    <div id="tts_status" style="padding: 5px; text-align: center; border-radius: 5px; background-color: #f0f0f0; margin-bottom: 10px;">{lang.get("tts_status_ready", "음성으로 듣기 준비됨")}</div>
     """
-    # 2. TTS JS 유틸리티를 Streamlit 앱에 컴포넌트로 삽입
-    # 이 부분은 페이지 로드 시 단 한 번만 호출되어야 하므로, 캐싱이 필요할 수 있습니다.
-    st.components.v1.html(tts_js_code, height=0, width=0)
+    # JS 유틸리티를 Streamlit 앱에 컴포넌트로 삽입 (높이 조정하여 상태창만 보이도록)
+    st.components.v1.html(tts_js_code, height=5, width=0)
 
 def render_tts_button(text_to_speak, api_key, current_lang_key):
     """TTS 버튼 UI를 렌더링하고 클릭 시 JS 함수를 호출합니다."""
     
-    # TTS 유틸리티는 페이지 상단에서 이미 삽입되었으므로, 여기서는 버튼만 렌더링
-    
-    # 2. 버튼 렌더링
     if api_key:
-        # 안전한 문자열 처리를 위해, 텍스트를 인코딩/이스케이프 처리
         # 줄 바꿈을 공백으로 변환하고, 따옴표를 이스케이프 처리
         safe_text = text_to_speak.replace('\n', ' ').replace('"', '\\"').replace("'", "\\'")
-
+        
+        # TTS JS 코드는 이미 페이지 로드 시 삽입되었습니다.
         st.markdown(f"""
             <button onclick="window.speakText('{safe_text}')"
                     style="background-color: #4338CA; color: white; padding: 10px 20px; border-radius: 5px; cursor: pointer; border: none; width: 100%; font-weight: bold; margin-bottom: 10px;">
@@ -319,46 +298,45 @@ def render_tts_button(text_to_speak, api_key, current_lang_key):
 def get_mock_response_data(lang_key, customer_type):
     """API Key가 없을 때 사용할 가상 응대 데이터 (다국어 지원)"""
     
-    # 성함, 전화번호, 이메일 등의 정확한 연락처 정보 확인 요청
     if lang_key == 'ko':
         initial_check = "고객님의 성함, 전화번호, 이메일 등 정확한 연락처 정보를 확인해 주시면 감사하겠습니다."
-        tone = "공감 및 진정 (Tone: Empathy and Calmness)"
-        advice = "이 고객은 배송 지연에 대한 불만이 매우 높습니다. 먼저 진심으로 사과하고, 현재 상태를 투명하게 설명하며, 문제 해결을 위한 구체적인 다음 행동을 제시해야 합니다."
+        tone = "공감 및 진정"
+        advice = "이 고객은 매우 까다로운 성향이므로, 감정에 공감하면서도 정해진 정책 내에서 해결책을 단계적으로 제시해야 합니다. 성급한 확답은 피하세요."
         draft = f"""
 {initial_check}
 
 > 고객님, 먼저 주문하신 상품 배송이 늦어져 많이 불편하셨을 점 진심으로 사과드립니다. 고객님의 상황을 충분히 이해하고 있습니다.
 > 현재 시스템 상 확인된 바로는 [배송 지연 사유 설명]. 
 > 이 문제를 해결하기 위해, 저희가 [구체적인 해결책 1: 예: 담당 팀에 직접 연락] 및 [구체적인 해결책 2: 예: 오늘 중으로 상태 업데이트 재확인]을 진행하겠습니다.
-> 처리되는 대로 오늘 오후 [시간]까지 고객님께 **개별적으로** 연락드리겠습니다.
+> 처리되는 대로 오늘 오후 [시간]까지 고객님께 개별적으로 연락드리겠습니다.
 """
     elif lang_key == 'en':
         initial_check = "Could you please confirm your accurate contact details, such as your full name, phone number, and email address?"
         tone = "Empathy and Calming Tone"
-        advice = "This customer is highly dissatisfied with the delivery delay. You must apologize sincerely, explain the status transparently, and provide concrete next steps to solve the problem."
+        advice = "This customer is highly dissatisfied. You must apologize sincerely, explain the status transparently, and provide concrete next steps to solve the problem within policy boundaries. Avoid making hasty promises."
         draft = f"""
 {initial_check}
 
 > Dear Customer, I sincerely apologize for the inconvenience caused by the delay in delivering your order. I completely understand your frustration.
 > Our system indicates [Reason for delay]. 
 > To resolve this, we will proceed with [Specific Solution 1: e.g., contacting the dedicated team immediately] and [Specific Solution 2: e.g., re-confirming the status update by end of day].
-> We will contact you **personally** by [Time] this afternoon with an update.
+> We will contact you personally by [Time] this afternoon with an update.
 """
     elif lang_key == 'ja':
         initial_check = "お客様の氏名、お電話番号、Eメールアドレスなど、正確な連絡先情報を確認させていただけますでしょうか。"
-        tone = "共感と鎮静トーン (Tone: Empathy and Calming)"
-        advice = "このお客様は配送遅延に対して非常に不満を持っています。まずは心からお詫びし、現状を透明に説明し、問題解決のための具体的な次の一手を提示する必要があります。"
+        tone = "共感と鎮静トーン"
+        advice = "このお客様は非常に難しい傾向にあるため、感情に共感しつつも、定められたポリシー内で解決策を段階的に提示する必要があります。安易な確約は避けてください。"
         draft = f"""
 {initial_check}
 
 > お客様、ご注文商品の配送が遅れてしまい、大変ご迷惑をおかけしておりますことを心よりお詫び申し上げます。お客様のお気持ち、十分理解しております。
 > 現在システムで確認したところ、[遅延の理由を説明]。
 > この問題を解決するため、弊社にて[具体的な解決策1：例：担当チームに直接連絡]および[具体的な解決策2：例：本日中に再度状況を確認]をいたします。
-> 進捗があり次第、本日午後[時間]までに**個別にご連絡**差し上げます。
+> 進捗があり次第、本日午後[時間]までに個別にご連絡差し上げます。
 """
     
     return {
-        "header": f"{LANG[lang_key]['simulation_advice_ready']} ({customer_type}向け)",
+        "advice_header": f"{LANG[lang_key]['simulation_advice_header']}",
         "advice": advice,
         "draft_header": f"{LANG[lang_key]['simulation_draft_header']} ({tone})",
         "draft": draft
@@ -385,12 +363,94 @@ def get_closing_messages(lang_key):
     return get_closing_messages('ko') # 기본값
 
 
+def get_document_chunks(files):
+    """업로드된 파일에서 텍스트를 로드하고 청킹합니다."""
+    documents = []
+    temp_dir = tempfile.mkdtemp()
+    for uploaded_file in files:
+        temp_filepath = os.path.join(temp_dir, uploaded_file.name)
+        file_extension = uploaded_file.name.split('.')[-1].lower()
+        if file_extension == "pdf":
+            with open(temp_filepath, "wb") as f: f.write(uploaded_file.getvalue())
+            loader = PyPDFLoader(temp_filepath)
+            documents.extend(loader.load())
+        elif file_extension == "html":
+            raw_html = uploaded_file.getvalue().decode('utf-8')
+            soup = BeautifulSoup(raw_html, 'html.parser')
+            text_content = soup.get_text(separator=' ', strip=True)
+            documents.append(Document(page_content=text_content, metadata={"source": uploaded_file.name}))
+        elif file_extension == "txt":
+            with open(temp_filepath, "wb") as f: f.write(uploaded_file.getvalue())
+            loader = TextLoader(temp_filepath, encoding="utf-8")
+            documents.extend(loader.load())
+        else:
+            print(f"File '{uploaded_file.name}' not supported.")
+            continue
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+    return text_splitter.split_documents(documents)
+
+def get_vector_store(text_chunks):
+    """텍스트 청크를 임베딩하고 Vector Store를 생성합니다."""
+    cache_key = tuple(doc.page_content for doc in text_chunks)
+    if cache_key in st.session_state.embedding_cache: return st.session_state.embedding_cache[cache_key]
+    if not st.session_state.is_llm_ready: return None
+    try:
+        vector_store = FAISS.from_documents(text_chunks, embedding=st.session_state.embeddings)
+        st.session_state.embedding_cache[cache_key] = vector_store
+        return vector_store
+    except Exception as e:
+        if "429" in str(e): return None
+        else:
+            print(f"Vector Store creation failed: {e}") 
+            return None
+
+def get_rag_chain(vector_store):
+    """검색 체인(ConversationalRetrievalChain)을 생성합니다."""
+    if vector_store is None: return None
+    return ConversationalRetrievalChain.from_llm(
+        llm=st.session_state.llm,
+        retriever=vector_store.as_retriever(),
+        memory=st.session_state.memory
+    )
+
+def load_or_train_lstm():
+    """가상의 학습 성취도 예측을 위한 LSTM 모델을 생성하고 학습합니다."""
+    np.random.seed(42)
+    data = np.cumsum(np.random.normal(loc=5, scale=5, size=50)) + 60
+    data = np.clip(data, 50, 95)
+    def create_dataset(dataset, look_back=3):
+        X, Y = [], []
+        for i in range(len(dataset) - look_back):
+            X.append(dataset[i:(i + look_back)])
+            Y.append(dataset[i + look_back])
+        return np.array(X), np.array(Y)
+    look_back = 5
+    X, Y = create_dataset(data, look_back)
+    X = np.reshape(X, (X.shape[0], X.shape[1], 1))
+    model = Sequential([
+        LSTM(50, activation='relu', input_shape=(look_back, 1)),
+        Dense(1)
+    ])
+    model.compile(optimizer='adam', loss='mse')
+    model.fit(X, Y, epochs=10, batch_size=1, verbose=0)
+    return model, data
+
+
+def clean_and_load_json(text):
+    """LLM 응답 텍스트에서 JSON 객체만 정규표현식으로 추출하여 로드"""
+    match = re.search(r'\{.*\}', text, re.DOTALL)
+    if match:
+        json_str = match.group(0)
+        try:
+            return json.loads(json_str)
+        except json.JSONDecodeError:
+            return None
+    return None
+
 def render_interactive_quiz(quiz_data, current_lang):
     """생성된 퀴즈 데이터를 Streamlit UI로 렌더링하고 피드백을 제공합니다."""
     L = LANG[current_lang]
-    # (Quiz 로직은 안정화되었으므로 생략)
-    if not quiz_data or 'quiz_questions' not in quiz_data:
-        return
+    if not quiz_data or 'quiz_questions' not in quiz_data: return
 
     questions = quiz_data['quiz_questions']
     num_questions = len(questions)
@@ -455,81 +515,6 @@ def render_interactive_quiz(quiz_data, current_lang):
                 st.session_state.quiz_results = [None] * num_questions
                 st.session_state.quiz_submitted = False
                 st.rerun()
-
-
-# (나머지 RAG/LSTM 함수는 생략)
-def get_document_chunks(files):
-    """업로드된 파일에서 텍스트를 로드하고 청킹합니다."""
-    documents = []
-    temp_dir = tempfile.mkdtemp()
-    for uploaded_file in files:
-        temp_filepath = os.path.join(temp_dir, uploaded_file.name)
-        file_extension = uploaded_file.name.split('.')[-1].lower()
-        if file_extension == "pdf":
-            with open(temp_filepath, "wb") as f: f.write(uploaded_file.getvalue())
-            loader = PyPDFLoader(temp_filepath)
-            documents.extend(loader.load())
-        elif file_extension == "html":
-            raw_html = uploaded_file.getvalue().decode('utf-8')
-            soup = BeautifulSoup(raw_html, 'html.parser')
-            text_content = soup.get_text(separator=' ', strip=True)
-            documents.append(Document(page_content=text_content, metadata={"source": uploaded_file.name}))
-        elif file_extension == "txt":
-            with open(temp_filepath, "wb") as f: f.write(uploaded_file.getvalue())
-            loader = TextLoader(temp_filepath, encoding="utf-8")
-            documents.extend(loader.load())
-        else:
-            print(f"File '{uploaded_file.name}' not supported.")
-            continue
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-    return text_splitter.split_documents(documents)
-
-def get_vector_store(text_chunks):
-    """텍스트 청크를 임베딩하고 Vector Store를 생성합니다."""
-    cache_key = tuple(doc.page_content for doc in text_chunks)
-    if cache_key in st.session_state.embedding_cache: return st.session_state.embedding_cache[cache_key]
-    if not st.session_state.is_llm_ready: return None
-    try:
-        vector_store = FAISS.from_documents(text_chunks, embedding=st.session_state.embeddings)
-        st.session_state.embedding_cache[cache_key] = vector_store
-        return vector_store
-    except Exception as e:
-        if "429" in str(e): return None
-        else:
-            print(f"Vector Store creation failed: {e}") 
-            return None
-
-def get_rag_chain(vector_store):
-    """검색 체인(ConversationalRetrievalChain)을 생성합니다."""
-    if vector_store is None: return None
-    return ConversationalRetrievalChain.from_llm(
-        llm=st.session_state.llm,
-        retriever=vector_store.as_retriever(),
-        memory=st.session_state.memory
-    )
-
-@st.cache_resource
-def load_or_train_lstm():
-    """가상의 학습 성취도 예측을 위한 LSTM 모델을 생성하고 학습합니다."""
-    np.random.seed(42)
-    data = np.cumsum(np.random.normal(loc=5, scale=5, size=50)) + 60
-    data = np.clip(data, 50, 95)
-    def create_dataset(dataset, look_back=3):
-        X, Y = [], []
-        for i in range(len(dataset) - look_back):
-            X.append(dataset[i:(i + look_back)])
-            Y.append(dataset[i + look_back])
-        return np.array(X), np.array(Y)
-    look_back = 5
-    X, Y = create_dataset(data, look_back)
-    X = np.reshape(X, (X.shape[0], X.shape[1], 1))
-    model = Sequential([
-        LSTM(50, activation='relu', input_shape=(look_back, 1)),
-        Dense(1)
-    ])
-    model.compile(optimizer='adam', loss='mse')
-    model.fit(X, Y, epochs=10, batch_size=1, verbose=0)
-    return model, data
 
 # ================================
 # 3. 다국어 지원 딕셔너리 (Language Dictionary)
@@ -832,10 +817,9 @@ if 'llm' not in st.session_state:
                     st.session_state.firestore_load_success = False
             
             # 시뮬레이터 체인 초기화
-            # 시뮬레이션은 RAGDB를 사용하지 않고 일반적인 대화형 체인으로 동작
             st.session_state.simulator_chain = ConversationalRetrievalChain.from_llm(
                 llm=st.session_state.llm,
-                retriever=st.session_state.embeddings.as_retriever(), # 임베딩만 초기화 상태로 전달 (실제 검색은 안 함)
+                retriever=st.session_state.embeddings.as_retriever(), 
                 memory=st.session_state.simulator_memory
             )
 
@@ -845,7 +829,7 @@ if 'llm' not in st.session_state:
     
     if llm_init_error:
         st.session_state.is_llm_ready = False
-        st.session_state.llm_init_error_msg = llm_init_error # 메시지를 세션에 저장
+        st.session_state.llm_init_error_msg = llm_init_error 
 
 # 나머지 세션 상태 초기화
 if "memory" not in st.session_state:
@@ -887,6 +871,11 @@ with st.sidebar:
     L = LANG[st.session_state.language] 
     
     st.title(L["sidebar_title"])
+
+    # ⭐ STT 라이브러리 설치 경고를 사이드바에서 안전하게 표시
+    if not STT_AVAILABLE:
+        st.error(L["button_mic_input"] + L["llm_error_init"] + "streamlit-mic-recorder")
+    
     st.markdown("---")
     
     uploaded_files_widget = st.file_uploader(
@@ -948,7 +937,6 @@ if feature_selection == L["simulator_tab"]:
     st.markdown(L["simulator_desc"])
     
     # 1. TTS 유틸리티 (상태 표시기 및 JS 함수)를 페이지 상단에 삽입
-    # TTS 재생 버튼을 눌렀을 때만 삽입되도록 하므로, 상태 표시기만 여기에 렌더링
     st.markdown(f'<div id="tts_status" style="padding: 5px; text-align: center; border-radius: 5px; background-color: #f0f0f0; margin-bottom: 10px;">{L["tts_status_ready"]}</div>', unsafe_allow_html=True)
     
     # TTS JS 유틸리티를 페이지 로드 시 단 한 번만 삽입 (TTS 함수가 글로벌로 정의되도록)
@@ -970,6 +958,10 @@ if feature_selection == L["simulator_tab"]:
             st.stop()
         
         # 1. 고객 문의 입력 필드
+        # 음성 입력 결과를 여기에 저장
+        if 'customer_query_text_area' not in st.session_state:
+            st.session_state.customer_query_text_area = ""
+
         customer_query = st.text_area(
             L["customer_query_label"],
             key="customer_query_text_area",
@@ -986,21 +978,22 @@ if feature_selection == L["simulator_tab"]:
         )
         
         # 3. 음성 입력 (STT) 추가
-        if not st.session_state.initial_advice_provided and mic_recorder:
-            st.markdown(f"#### {L['button_mic_input']} (Beta)")
+        if not st.session_state.initial_advice_provided and STT_AVAILABLE:
+            col_mic, col_temp = st.columns([1, 4])
+            with col_mic:
+                st.markdown(f"**{L['button_mic_input']}**")
+                # Streamlit-mic-recorder 컴포넌트를 사용하여 음성 녹음 후 Base64 데이터 반환
+                audio_data = mic_recorder(
+                    start_prompt="🎙️",
+                    stop_prompt="⏹️",
+                    key='mic_input',
+                    just_once=True
+                )
             
-            # Streamlit-mic-recorder 컴포넌트를 사용하여 음성 녹음 후 Base64 데이터 반환
-            audio_data = mic_recorder(
-                start_prompt=L['button_mic_input'] + "🎙️",
-                stop_prompt="녹음 중지 ⏹️",
-                key='mic_input',
-                just_once=True
-            )
-            
-            if audio_data and 'text' in audio_data:
+            if audio_data and 'text' in audio_data and audio_data['text']:
                 # 녹음된 텍스트를 입력창에 삽입
                 st.session_state.customer_query_text_area = audio_data['text']
-                st.info(f"음성 입력: {audio_data['text']}")
+                st.info(f"음성 입력 완료: {audio_data['text']}")
                 st.rerun()
 
         # 선택된 언어 키
@@ -1109,7 +1102,7 @@ if feature_selection == L["simulator_tab"]:
                     Analyze the entire chat history. Roleplay as the customer ({customer_type_display}). 
                     Based on the agent's last message, generate ONE of the following responses in the customer's voice:
                     1. A short, challenging rebuttal (still unsatisfied).
-                    2. A new, follow-up question related to the original query.
+                    2. A new, follow-up question related to the previous interaction.
                     3. A positive closing remark (e.g., "{L['customer_positive_response']}").
                     
                     Do not provide any resolution yourself. Just the customer's message.
@@ -1117,27 +1110,30 @@ if feature_selection == L["simulator_tab"]:
                     """
                     
                     with st.spinner("고객의 반응 생성 중..."):
+                        # Langchain Memory가 전체 대화를 관리하도록 요청
                         response = st.session_state.simulator_chain.invoke({"question": next_reaction_prompt})
                         customer_reaction = response.get('answer', L['tts_status_error'])
                         
-                        # 반응 유형에 따라 역할 설정
-                        if L['customer_positive_response'] in customer_reaction or '감사' in customer_reaction or 'thank you' in customer_reaction or 'ありがとう' in customer_reaction:
+                        # 긍정적 종료 확인 (다국어 포함)
+                        is_positive_close = any(keyword in customer_reaction.lower() for keyword in 
+                                                ["감사", "thank you", "ありがとう", L['customer_positive_response'].lower()])
+                        
+                        if is_positive_close:
                             role = "customer_end" # 긍정적 종료
+                            # 긍정적 종료일 경우, 상담원에게 매너 종료 요청
+                            st.session_state.simulator_messages.append({"role": role, "content": customer_reaction})
+                            st.session_state.simulator_memory.chat_memory.add_ai_message(customer_reaction)
+                            st.session_state.simulator_messages.append({"role": "supervisor", "content": L["customer_closing_confirm"]})
+                            st.session_state.simulator_memory.chat_memory.add_ai_message(L["customer_closing_confirm"])
                         else:
                             role = "customer_rebuttal" # 재반박 또는 추가 질문
-
-                        st.session_state.simulator_messages.append({"role": role, "content": customer_reaction})
-                        st.session_state.simulator_memory.chat_memory.add_ai_message(customer_reaction) # 고객 반응을 메모리에 추가
-                        
-                        if role == "customer_end":
-                             # 긍정적 종료일 경우, 상담원에게 매너 종료 요청
-                             st.session_state.simulator_messages.append({"role": "supervisor", "content": L["customer_closing_confirm"]})
-                             st.session_state.simulator_memory.chat_memory.add_ai_message(L["customer_closing_confirm"])
+                            st.session_state.simulator_messages.append({"role": role, "content": customer_reaction})
+                            st.session_state.simulator_memory.chat_memory.add_ai_message(customer_reaction)
                              
                         st.rerun()
             
             # 에이전트(사용자)가 고객에게 응답할 차례 (재반박, 추가 질문 후)
-            if last_role in ["customer_rebuttal", "customer_end"]:
+            if last_role in ["customer_rebuttal", "customer_end", "supervisor"]:
                  # TTS/STT 기능은 입력창 바로 위에서 제공되므로, 입력창만 표시
                 agent_response = st.chat_input("에이전트로서 고객에게 응답하세요 (재반박 대응)")
                 if agent_response:
@@ -1148,8 +1144,6 @@ if feature_selection == L["simulator_tab"]:
     else:
         # LLM 초기화 자체에 문제가 있을 경우의 오류 메시지 (다국어)
         st.error(L["llm_error_init"])
-
-# (나머지 RAG/CONTENT/LSTM 탭 로직은 이전과 동일하게 유지됩니다.)
 
 elif feature_selection == L["rag_tab"]:
     st.header(L["rag_header"])
