@@ -11,7 +11,7 @@ import base64
 import io
 
 # ⭐ Admin SDK 관련 라이브러리 임포트
-from firebase_admin import credentials, firestore, initialize_app
+from firebase_admin import credentials, firestore, initialize_app, get_app
 # Admin SDK의 firestore와 Google Cloud SDK의 firestore를 구분하기 위해 alias 사용
 from google.cloud import firestore as gcp_firestore
 
@@ -38,7 +38,6 @@ from tensorflow.keras.layers import LSTM, Dense
 def _get_admin_credentials():
     """
     Secrets에서 서비스 계정 정보를 안전하게 로드하고 딕셔너리로 반환합니다.
-    (initialize_firestore_admin 함수가 안전하게 호출할 수 있도록 분리)
     """
     if "FIREBASE_SERVICE_ACCOUNT_JSON" not in st.secrets:
         return None, "FIREBASE_SERVICE_ACCOUNT_JSON Secret이 누락되었습니다."
@@ -57,7 +56,7 @@ def _get_admin_credentials():
         sa_info = service_account_data
     else:
         return None, f"FIREBASE_SERVICE_ACCOUNT_JSON의 형식이 올바르지 않습니다. (Type: {type(service_account_data)})"
-        
+    
     if not sa_info.get("project_id") or not sa_info.get("private_key"):
         return None, "JSON 내 'project_id' 또는 'private_key' 필드가 누락되었습니다."
 
@@ -65,23 +64,42 @@ def _get_admin_credentials():
 
 @st.cache_resource(ttl=None)
 def initialize_firestore_admin():
-    if "FIREBASE_SERVICE_ACCOUNT_JSON" not in st.secrets:
-        st.error("❌ Firebase Secret 누락: FIREBASE_SERVICE_ACCOUNT_JSON")
+    """
+    Secrets에서 로드된 정보를 사용하여 Firebase Admin SDK를 초기화합니다.
+    (로컬 파일 로딩 방식 대신 Secret의 JSON 데이터를 사용하도록 수정)
+    """
+    sa_info, error_message = _get_admin_credentials()
+
+    if error_message:
+        st.error(f"❌ Firebase Secret 오류: {error_message}")
         return None
 
-    # ✅ 문자열을 JSON으로 변환
-    firebase_config = json.loads(st.secrets["FIREBASE_SERVICE_ACCOUNT_JSON"])
-    
+    # 이미 초기화되었는지 확인 (Streamlit Rerun 문제 방지)
     try:
-        cred = credentials.Certificate("flutter-ai-playground.json")
-        initialize_app(cred)
-        st.session_state["db"] = firestore.client()
-        st.success("✅ Firebase Admin SDK 초기화 완료!")
-        return firestore.client()
-    except Exception as e:
-        st.error(f"🔥 Firebase 초기화 실패: {e}")
-        return None
+        get_app()
+    except ValueError:
+        pass # 앱이 초기화되지 않은 경우
+    else:
+        # 이미 초기화된 경우 클라이언트만 반환
+        try:
+            return firestore.client()
+        except Exception as e:
+            st.error(f"🔥 Firebase 클라이언트 로드 실패: {e}")
+            return None
 
+
+    try:
+        # 서비스 계정 정보를 직접 전달하여 인증 객체 생성
+        cred = credentials.Certificate(sa_info) 
+        initialize_app(cred)
+        
+        db_client = firestore.client()
+        st.session_state["db"] = db_client
+        st.success("✅ Firebase Admin SDK 초기화 완료! (Secrets 기반)")
+        return db_client
+    except Exception as e:
+        st.error(f"🔥 Firebase 초기화 실패: 서비스 계정 정보 문제. 오류: {e}")
+        return None
 
 
 def save_index_to_firestore(db, vector_store, index_id="user_portfolio_rag"):
@@ -434,7 +452,7 @@ LANG = {
         "lstm_header": "LSTMベース達成度予測ダッシュボード",
         "lstm_desc": "仮想の過去クイズスコアデータに基づき、LSTMモデルを訓練して将来の達成度を予測し表示します。",
         "lstm_disabled_error": "現在、ビルド環境の問題によりLSTM機能は一時的に無効化されています。「カスタムコンテンツ生成」機能を先にご利用ください。」",
-        "lang_select": "언어 선택",
+        "lang_select": "言語選択",
         "embed_success": "全{count}チャンクで学習DB構築完了!",
         "embed_fail": "埋め込み失敗: フリーティアのクォータ超過またはネットワークの問題。",
         "warning_no_files": "まず学習資料をアップロードしてください。",
@@ -495,20 +513,17 @@ if 'llm' not in st.session_state:
             st.session_state.is_llm_ready = True
             
             # ⭐⭐ Admin SDK 클라이언트 초기화 (st.secrets 기반 최종 안전성) ⭐⭐
-            # initialize_firestore_admin() 대신, 분리된 함수를 호출하도록 수정
+            
             sa_info, error_message = _get_admin_credentials()
             
             if error_message:
-                llm_init_error = f"{L['llm_error_init']} (DB Auth Error: {error_message})" # ⭐⭐ 'llm_error_init'로 수정
+                llm_init_error = f"{L['llm_error_init']} (DB Auth Error: {error_message})" 
             elif sa_info:
-                # initialize_firestore_client 함수가 정의되어 있지 않아 오류를 방지하기 위해 임시로 initialize_firestore_admin을 재활용합니다.
-                # 참고: 현재 코드에는 initialize_firestore_client가 정의되지 않았습니다.
-                # 임시로 initialize_firestore_admin()을 호출하여 DB 클라이언트를 설정합니다.
                 db = initialize_firestore_admin() 
                 st.session_state.firestore_db = db
                 
                 if not db:
-                    llm_init_error = f"{L['llm_error_init']} (DB Client Error: Firebase Admin Init Failed)" # ⭐⭐ 'llm_error_init'로 수정
+                    llm_init_error = f"{L['llm_error_init']} (DB Client Error: Firebase Admin Init Failed)" 
 
             # DB 로딩 로직
             if st.session_state.firestore_db and 'conversation_chain' not in st.session_state:
@@ -523,7 +538,7 @@ if 'llm' not in st.session_state:
                     st.session_state.firestore_load_success = False
             
         except Exception as e:
-            llm_init_error = f"{L['llm_error_init']} {e}" # ⭐⭐ 'llm_error_init'로 수정
+            llm_init_error = f"{L['llm_error_init']} {e}" 
             st.session_state.is_llm_ready = False
     
     if llm_init_error:
