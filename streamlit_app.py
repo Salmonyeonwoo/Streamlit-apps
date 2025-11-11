@@ -44,18 +44,21 @@ def _get_admin_credentials():
     
     service_account_data = st.secrets["FIREBASE_SERVICE_ACCOUNT_JSON"]
     
+    # 🌟🌟🌟 수정된 로직 시작 🌟🌟🌟
     if isinstance(service_account_data, str):
         try:
-            # 문자열인 경우: 유효하지 않은 이스케이프 문자 및 줄바꿈을 복구하여 JSON 로드
-            sa_info_str = service_account_data.strip().replace('\\n', '\n')
-            sa_info = json.loads(sa_info_str)
-        except json.JSONDecodeError:
-            return None, "FIREBASE_SERVICE_ACCOUNT_JSON의 JSON 구문 오류입니다. 값을 확인하세요."
-    elif isinstance(service_account_data, dict):
-        # 딕셔너리인 경우 (Streamlit Cloud에서 자동 파싱된 경우)
-        sa_info = service_account_data
+            # 문자열인 경우: 줄 바꿈이나 탭을 포함한 문자열을 직접 JSON으로 로드합니다.
+            sa_info = json.loads(service_account_data.strip())
+        except json.JSONDecodeError as e:
+            # 구문 오류 시 자세한 오류 메시지를 반환합니다.
+            return None, f"FIREBASE_SERVICE_ACCOUNT_JSON의 JSON 구문 오류입니다. 값을 확인하세요. 상세 오류: {e}"
+    # Streamlit Secrets에서 AttrDict (딕셔너리처럼 동작)로 반환될 경우를 처리
+    elif hasattr(service_account_data, 'get') and callable(service_account_data.get):
+        # get() 메서드를 가지는 객체(AttrDict, dict 포함)는 딕셔너리로 간주
+        sa_info = dict(service_account_data) # AttrDict를 표준 dict로 변환
     else:
         return None, f"FIREBASE_SERVICE_ACCOUNT_JSON의 형식이 올바르지 않습니다. (Type: {type(service_account_data)})"
+    # 🌟🌟🌟 수정된 로직 끝 🌟🌟🌟
     
     if not sa_info.get("project_id") or not sa_info.get("private_key"):
         return None, "JSON 내 'project_id' 또는 'private_key' 필드가 누락되었습니다."
@@ -123,9 +126,9 @@ def save_index_to_firestore(db, vector_store, index_id="user_portfolio_rag"):
         return True
     
     except Exception as e:
-        # ⭐ 이 줄을 수정합니다: 실제 오류를 Streamlit 콘솔에 출력합니다.
-        print(f"Error saving index to Firestore: {e}") 
-        st.error(f"DB 저장 시도 중 오류 발생: {e}") # ⭐ 사용자에게도 오류 표시
+        # DB 저장 시도 중 오류 발생 시 사용자에게 표시
+        st.error(f"DB 저장 시도 중 오류 발생: {e}")
+        print(f"Error saving index to Firestore: {e}")
         return False
 
 def load_index_from_firestore(db, embeddings, index_id="user_portfolio_rag"):
@@ -454,7 +457,7 @@ LANG = {
         "lstm_header": "LSTMベース達成度予測ダッシュボード",
         "lstm_desc": "仮想の過去クイズスコアデータに基づき、LSTMモデルを訓練して将来の達成度を予測し表示します。",
         "lstm_disabled_error": "現在、ビルド環境の問題によりLSTM機能は一時的に無効化されています。「カスタムコンテンツ生成」機能を先にご利用ください。」",
-        "lang_select": "言語選択",
+        "lang_select": "언어 선택",
         "embed_success": "全{count}チャンクで学習DB構築完了!",
         "embed_fail": "埋め込み失敗: フリーティアのクォータ超過またはネットワークの問題。",
         "warning_no_files": "まず学習資料をアップロードしてください。",
