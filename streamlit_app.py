@@ -3390,6 +3390,7 @@ if last_role in ["customer_rebuttal", "customer_end", "supervisor"]:
         st.caption("녹음 후 전사 결과를 확인하고, 필요하면 편집한 뒤 전송하세요.")
 
     transcript = ""
+
     # 2️⃣ 오디오가 들어오면 임시 파일로 저장하고 전사 시도
     if audio_value:
         tmp_dir = tempfile.mkdtemp()
@@ -3408,12 +3409,15 @@ if last_role in ["customer_rebuttal", "customer_end", "supervisor"]:
             with sr.AudioFile(converted_path) as source:
                 audio_data = r.record(source)
                 lang = (
-                    "ko-KR" if st.session_state.language == "ko"
-                    else "ja-JP" if st.session_state.language == "ja"
+                    "ko-KR"
+                    if st.session_state.language == "ko"
+                    else "ja-JP"
+                    if st.session_state.language == "ja"
                     else "en-US"
                 )
                 transcript = r.recognize_google(audio_data, language=lang)
                 st.success("🎙️ 전사 성공! 텍스트로 변환되었습니다.")
+
         except Exception as e:
             st.warning(f"⚠️ 음성 전사 중 오류가 발생했습니다: {e}")
             transcript = ""
@@ -3425,7 +3429,7 @@ if last_role in ["customer_rebuttal", "customer_end", "supervisor"]:
             "에이전트로서 고객에게 응답하세요 (재반박 대응)",
             value=transcript,
             key="agent_response_area",
-            height=150
+            height=150,
         )
 
         if st.button("응답 전송", key="send_agent_response"):
