@@ -2775,10 +2775,12 @@ LANG = {
         "tts_status_fail": "❌ TTS 생성 실패 (데이터 없음)",
         "tts_status_error": "❌ TTS 오류 발생",
         
-        # ⭐ 대화형/종료 메시지
-        "button_mic_input": "음성 입력",
-        "prompt_customer_end": "고객님의 추가 문의 사항이 없어, 이 상담 채팅을 종료하겠습니다.",
-        "prompt_survey": "고객 문의 센터에 연락 주셔서 감사드리며, 추가로 저희 응대 솔루션에 대한 설문 조사에 응해 주시면 감사하겠습니다. 추가 문의 사항이 있으시면 언제든지 연락 주십시오.",
+        # ⭐ 대화형/종료 메시지 (KeyError 방지용 추가)
+        "button_mic_input": "🎙️ 음성 입력",
+        "agent_response_placeholder": "텍스트로 응답하세요 (재반박 대응)", 
+        "agent_response_placeholder_chat": "에이전트로서 고객에게 응답하세요", # Fallback 용
+        "prompt_customer_end": "고객님의 추가 문의 사항이 없어, 이 상담 채팅을 종료하겠습니다。",
+        "prompt_survey": "고객 문의 센터에 연락 주셔서 감사드리며, 추가로 저희 응대 솔루션에 대한 설문 조사에 응해 주시면 감사하겠습니다. 추가 문의 사항이 있으시면 언제든지 연락 주십시오。",
         "customer_closing_confirm": "또 다른 문의 사항은 없으신가요?",
         "customer_positive_response": "좋은 말씀/친절한 상담 감사드립니다.",
         "button_end_chat": "응대 종료 (설문 조사 요청)"
@@ -2848,8 +2850,10 @@ LANG = {
         "tts_status_fail": "❌ TTS generation failed (No data)",
         "tts_status_error": "❌ TTS API error occurred",
 
-        # ⭐ 대화형/종료 메시지
-        "button_mic_input": "Voice Input",
+        # ⭐ 대화형/종료 메시지 (KeyError 방지용 추가)
+        "button_mic_input": "🎙️ Voice Input",
+        "agent_response_placeholder": "Respond with text (rebuttal response)",
+        "agent_response_placeholder_chat": "Respond as agent to customer", # Fallback 용
         "prompt_customer_end": "As there are no further inquiries, we will now end this chat session.",
         "prompt_survey": "Thank you for contacting our Customer Support Center. We would be grateful if you could participate in a short survey about our service solution. Please feel free to contact us anytime if you have any additional questions.",
         "customer_closing_confirm": "Is there anything else we can assist you with today?",
@@ -2868,7 +2872,7 @@ LANG = {
         "rag_header": "RAG知識チャットボット (ドキュメントQ&A)",
         "rag_desc": "アップロードされたドキュメントに基づいて質問に回答します。",
         "rag_input_placeholder": "学習資料について質問してください",
-        "llm_error_key": "⚠️ 警告: GEMINI APIキーが設定されていません。Streamlit Secretsに'GEMINI_API_KEY'를 설정해주세요。",
+        "llm_error_key": "⚠️ 警告: GEMINI APIキーが設定されていません。Streamlit Secretsに'GEMINI_API_KEY'を設 定해주세요。",
         "llm_error_init": "LLM初期化エラー：APIキーを確認してください。",
         "content_header": "カスタム学習コンテンツ生成",
         "content_desc": "学習テーマと難易度に合わせてコンテンツを生成します。",
@@ -2921,8 +2925,10 @@ LANG = {
         "tts_status_fail": "❌ TTS生成失敗（データなし）",
         "tts_status_error": "❌ TTS APIエラーが発生しました",
 
-        # ⭐ 대화형/종료 메시지
-        "button_mic_input": "音声入力",
+        # ⭐ 대화형/종료 메시지 (KeyError 방지용 추가)
+        "button_mic_input": "🎙️ 音声入力",
+        "agent_response_placeholder": "テキストで応答 (再反論の対応)",
+        "agent_response_placeholder_chat": "エージェントとして顧客に回答", # Fallback 용
         "prompt_customer_end": "お客様からの追加のお問い合わせがないため、本チャットサポートを終了させていただきます。",
         "prompt_survey": "お問い合わせいただき、誠にありがとうございました。弊社の対応ソリューションに関する簡単なアンケートにご協力いただければ幸いです。追加のご質問がございましたらいつでもご連絡ください。",
         "customer_closing_confirm": "また、お客様にお手伝いさせて頂けるお問い合わせは御座いませんか？",
@@ -2930,7 +2936,6 @@ LANG = {
         "button_end_chat": "対応終了 (アンケートを依頼)"
     }
 }
-
 
 # ================================
 # 4. Streamlit 핵심 Config 설정 및 Session State 초기화 (CRITICAL ZONE)
