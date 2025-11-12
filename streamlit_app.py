@@ -3308,10 +3308,7 @@ if feature_selection == L["simulator_tab"]:
         if st.session_state.initial_advice_provided and not st.session_state.is_chat_ended:
             
             last_role = st.session_state.simulator_messages[-1]['role'] if st.session_state.simulator_messages else None
-            
-            # --- 고객의 다음 반응 요청 버튼 ---
-            if last_role in ["agent_response", "customer", "customer_end", "supervisor"]: # 모든 메시지 후 다음 버튼을 누를 수 있도록 수정
-                
+                                       
                 # 에이전트(사용자)가 고객에게 응답할 차례 (재반박, 추가 질문 후)
             if last_role in ["customer_rebuttal", "customer_end", "supervisor"]:
                 
