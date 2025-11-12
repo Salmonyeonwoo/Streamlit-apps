@@ -3414,7 +3414,7 @@ if last_role in ["customer_rebuttal", "customer_end", "supervisor"]:
                 )
                 transcript = r.recognize_google(audio_data, language=lang)
                 st.success("🎙️ 전사 성공! 텍스트로 변환되었습니다.")
-         except Exception as e:
+        except Exception as e:
             st.warning(f"⚠️ 음성 전사 중 오류가 발생했습니다: {e}")
             transcript = ""
 
