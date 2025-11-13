@@ -39,24 +39,25 @@ from langchain.prompts import PromptTemplate # ⭐ PromptTemplate 임포트
 
 def _get_admin_credentials():
     """Secrets에서 서비스 계정 정보를 안전하게 로드하고 딕셔너리로 반환합니다."""
-    if "FIREBASE_SECRETS_JSON" not in st.secrets:
-        return None, "FIREBASE_SECRETS_JSON Secret이 누락되었습니다."
+    # Secrets 키를 'FIREBASE_SERVICE_ACCOUNT_JSON'으로 표준화
+    if "FIREBASE_SERVICE_ACCOUNT_JSON" not in st.secrets:
+        return None, "FIREBASE_SERVICE_ACCOUNT_JSON Secret이 누락되었습니다."
     
-    service_account_data = st.secrets["FIREBASE_SECRETS_JSON"]
+    service_account_data = st.secrets["FIREBASE_SERVICE_ACCOUNT_JSON"]
     sa_info = None
 
     if isinstance(service_account_data, str):
         try:
             sa_info = json.loads(service_account_data.strip())
         except json.JSONDecodeError as e:
-            return None, f"FIREBASE_SECRETS_JSON의 JSON 구문 오류입니다. 값을 확인하세요. 상세 오류: {e}"
+            return None, f"FIREBASE_SERVICE_ACCOUNT_JSON의 JSON 구문 오류입니다. 값을 확인하세요. 상세 오류: {e}"
     elif hasattr(service_account_data, 'get'):
         try:
             sa_info = dict(service_account_data) # AttrDict를 표준 dict로 변환
         except Exception:
-             return None, f"FIREBASE_SECRETS_JSON의 딕셔너리 변환 실패. 타입: {type(service_account_data)}"
+             return None, f"FIREBASE_SERVICE_ACCOUNT_JSON의 딕셔너리 변환 실패. 타입: {type(service_account_data)}"
     else:
-        return None, f"FIREBASE_SECRETS_JSON의 형식이 올바르지 않습니다. (Type: {type(service_account_data)})"
+        return None, f"FIREBASE_SERVICE_ACCOUNT_JSON의 형식이 올바르지 않습니다. (Type: {type(service_account_data)})"
     
     if not sa_info.get("project_id") or not sa_info.get("private_key"):
         return None, "JSON 내 'project_id' 또는 'private_key' 필드가 누락되었습니다."
@@ -202,9 +203,7 @@ def load_simulation_histories(db):
 # ⭐ 이력 삭제 함수 (Firestore 연동)
 def delete_all_history(db):
     """Firestore의 모든 상담 이력을 삭제합니다."""
-    # LANG 변수는 전역 스코프에서 사용 가능하지만, 함수 내에서 명시적으로 정의하는 것이 안전
-    # 그러나 Streamlit 앱의 재실행 특성상 전역에서 가져와야 함 (KeyError 방지)
-    L = LANG[st.session_state.language] 
+    L = LANG[st.session_state.language] # 함수 내에서 L을 다시 정의
     
     if not db:
         st.error(L.get("firestore_no_index", "DB 연결 오류"))
@@ -213,11 +212,8 @@ def delete_all_history(db):
     try:
         # 이터레이션을 위해 스트림 사용
         docs = db.collection("simulation_histories").stream()
-        
-        # 삭제 작업 실행
-        with st.spinner(L.get("deleting_history_progress", "이력 삭제 중...")): 
-            for doc in docs:
-                doc.reference.delete()
+        for doc in docs:
+            doc.reference.delete()
         
         # 세션 상태도 초기화
         st.session_state.simulator_messages = []
@@ -348,59 +344,46 @@ def get_mock_response_data(lang_key, customer_type):
     L = LANG[lang_key]
     
     if lang_key == 'ko':
-        # ⭐ 수정된 중립적인 목업 데이터 템플릿
         initial_check = "고객님의 성함, 전화번호, 이메일 등 정확한 연락처 정보를 확인해 주시면 감사하겠습니다."
-        tone = "공감 및 해결 중심"
-        advice = "이 고객은 {customer_type} 성향이지만, 문제 해결을 간절히 원합니다. 공감과 함께, 문제 해결에 필수적인 정보를 명확하게 요청해야 합니다. 불필요한 사족을 피하고 신뢰를 주도록 하세요."
+        tone = "공감 및 진정"
+        advice = "이 고객은 매우 까다로운 성향이므로, 감정에 공감하면서도 정해진 정책 내에서 해결책을 단계적으로 제시해야 합니다. 성급한 확답은 피하세요."
         draft = f"""
 {initial_check}
 
-> 고객님, 불편을 겪게 해드려 죄송합니다. 고객님의 상황을 충분히 이해하고 있습니다.
-> 문제 해결을 위해, 아래 세 가지 필수 정보를 확인해 주시면 감사하겠습니다. 이 정보가 있어야 고객님 상황에 맞는 정확한 해결책을 제시할 수 있습니다.
-> 1. 문제 발생과 관련된 상품/서비스의 **정확한 명칭 및 예약 번호** (예: 파리 eSIM, 예약번호 1234567)
-> 2. 현재 **문제 상황**에 대한 구체적인 설명 (예: 휴대폰이 안 됨, 환불 요청, 정보 문의)
-> 3. 이미 **시도하신 해결 단계** (예: 기기 재부팅, 설정 확인 등)
-
-> 고객님과의 원활한 소통을 통해 신속하게 문제 해결을 돕겠습니다. 답변 기다리겠습니다.
+> 고객님, 먼저 주문하신 상품 배송이 늦어져 많이 불편하셨을 점 진심으로 사과드립니다. 고객님의 상황을 충분히 이해하고 있습니다.
+> 현재 시스템 상 확인된 바로는 [배송 지연 사유 설명]. 
+> 이 문제를 해결하기 위해, 저희가 [구체적인 해결책 1: 예: 담당 팀에 직접 연락] 및 [구체적인 해결책 2: 예: 오늘 중으로 상태 업데이트 재확인]을 진행하겠습니다.
+> 처리되는 대로 오늘 오후 [시간]까지 고객님께 개별적으로 연락드리겠습니다.
 """
     elif lang_key == 'en':
         initial_check = "Could you please confirm your accurate contact details, such as your full name, phone number, and email address?"
-        tone = "Empathy and Solution-Focused"
-        advice = "This customer is {customer_type} but desperately wants a solution. Show empathy, but clearly request the essential information needed for troubleshooting. Be direct and build trust."
+        tone = "Empathy and Calming Tone"
+        advice = "This customer is highly dissatisfied. You must apologize sincerely, explain the status transparently, and provide concrete next steps to solve the problem within policy boundaries. Avoid making hasty promises."
         draft = f"""
 {initial_check}
 
-> Dear Customer, I sincerely apologize for the inconvenience you are facing. I completely understand your frustration.
-> To proceed with troubleshooting, please confirm the three essential pieces of information below. This data is critical for providing you with the correct, tailored solution:
-> 1. The **exact name and booking number** of the product/service concerned (e.g., Paris eSIM, Booking #1234567).
-> 2. A specific description of the **current issue** (e.g., phone not connecting, refund request, information inquiry).
-> 3. Any **troubleshooting steps already attempted** (e.g., device rebooted, settings checked, etc.).
-
-> We aim to resolve your issue as quickly as possible with your cooperation. We await your response.
+> Dear Customer, I sincerely apologize for the inconvenience caused by the delay in delivering your order. I completely understand your frustration.
+> Our system indicates [Reason for delay]. 
+> To resolve this, we will proceed with [Specific Solution 1: e.g., contacting the dedicated team immediately] and [Specific Solution 2: e.g., re-confirming the status update by end of day].
+> We will contact you personally by [Time] this afternoon with an update.
 """
     elif lang_key == 'ja':
         initial_check = "お客様の氏名、お電話番号、Eメールアドレスなど、正確な連絡先情報を確認させていただけますでしょうか。"
-        tone = "共感と解決中心"
-        advice = "このお客様は{customer_type}傾向ですが、問題の解決を強く望んでいます。共感を示しつつも、問題解決に不可欠な情報を明確に尋ねる必要があります。冗長な説明を避け、信頼感を与える対応を心がけてください。"
+        tone = "共感と鎮静トーン"
+        advice = "このお客様は非常に難しい傾向にあるため、感情に共感しつつも、定められたポリシー内で解決策を段階的に提示する必要があります。安易な確約は避けてください。"
         draft = f"""
 {initial_check}
 
-> お客様、ご不便をおかけし、誠に申し訳ございません。現在の状況、十分承知いたしました。
-> 問題を迅速に解決するため、恐れ入りますが、以下の3点の必須情報についてご確認いただけますでしょうか。この情報がないと、お客様の状況に合わせた的確な解決策をご案内できません。
-> 1. 問題の対象となる**商品・サービスの正確な名称と予約番号** (例: パリeSIM、予約番号1234567)
-> 2. 現在の**具体的な問題状況** (例: 携帯電話が使えない、返金を希望する、情報が知りたい)
-> 3. 既に**お試しいただいた解決手順** (例: 端末の再起動、設定確認など)
-
-> お客様との円滑なコミュニケーションを通じて、迅速に問題解決をサポートさせていただきます。ご返信をお待ちしております。
+> お客様、ご注文商品の配送が遅れてしまい、大変ご迷惑をおかけしておりますことを心よりお詫び申し上げます。お客様のお気持ち、十分理解しております。
+> 現在システムで確認したところ、[遅延の理由を説明]。
+> この問題を解決するため、弊社にて[具体的な解決策1：例：担当チームに直接連絡]および[具体的な解決策2：例：本日中に再度状況を確認]をいたします。
+> 進捗があり次第、本日午後[時間]までに個別にご連絡差し上げます。
 """
     
-    # advice 문자열 내부의 {customer_type}을 실제 선택 값으로 대체
-    advice_text = advice.replace("{customer_type}", customer_type)
-
     return {
-        "advice_header": f"{L['simulation_advice_header']}",
-        "advice": advice_text,
-        "draft_header": f"{L['simulation_draft_header']} ({tone})",
+        "advice_header": f"{LANG[lang_key]['simulation_advice_header']}",
+        "advice": advice,
+        "draft_header": f"{LANG[lang_key]['simulation_draft_header']} ({tone})",
         "draft": draft
     }
 
@@ -548,14 +531,14 @@ def render_interactive_quiz(quiz_data, current_lang):
     options_list = list(options_dict.values())
     
     selected_answer = st.radio(
-        L.get("select_answer", "정답을 선택하세요"),
+        L.get("select_answer", "正解を選択してください"),
         options=options_list,
         key=f"q_radio_{q_index}"
     )
 
     col1, col2 = st.columns(2)
 
-    if col1.button(L.get("check_answer", "정답 확인"), key=f"check_btn_{q_index}", disabled=st.session_state.quiz_submitted):
+    if col1.button(L.get("check_answer", "正解確認"), key=f"check_btn_{q_index}", disabled=st.session_state.quiz_submitted):
         user_choice_letter = selected_answer.split(')')[0] if selected_answer else None
         correct_answer_letter = q_data['correct_answer']
 
@@ -565,24 +548,24 @@ def render_interactive_quiz(quiz_data, current_lang):
         st.session_state.quiz_submitted = True
         
         if is_correct:
-            st.success(L.get("correct_answer", "정답입니다! 🎉"))
+            st.success(L.get("correct_answer", "正解です！ 🎉"))
         else:
-            st.error(L.get("incorrect_answer", "오답입니다.😞"))
+            st.error(L.get("incorrect_answer", "不正解です。😞"))
         
-        st.markdown(f"**{L.get('correct_is', '정답')}: {correct_answer_letter}**")
-        st.info(f"**{L.get('explanation', '해설')}:** {q_data['explanation']}")
+        st.markdown(f"**{L.get('correct_is', '正解')}**: {correct_answer_letter}")
+        st.info(f"**{L.get('explanation', '解説')}**: {q_data['explanation']}")
 
     if st.session_state.quiz_submitted:
         if q_index < num_questions - 1:
-            if col2.button(L.get("next_question", "다음 문항"), key=f"next_btn_{q_index}"):
+            if col2.button(L.get("next_question", "次の質問"), key=f"next_btn_{q_index}"):
                 st.session_state.current_question += 1
                 st.session_state.quiz_submitted = False
                 st.rerun()
         else:
             total_correct = st.session_state.quiz_results.count(True)
             total_questions = len(st.session_state.quiz_results)
-            st.success(f"**{L.get('quiz_complete', '퀴즈 완료!')}** {L.get('score', '점수')}: {total_correct}/{total_questions}")
-            if st.button(L.get("retake_quiz", "퀴즈 다시 풀기"), key="retake"):
+            st.success(f"**{L.get('quiz_complete', 'クイズ完了!')}** {L.get('score', 'スコア')}: {total_correct}/{total_questions}")
+            if st.button(L.get("retake_quiz", "クイズを再挑戦"), key="retake"):
                 st.session_state.current_question = 0
                 st.session_state.quiz_results = [None] * num_questions
                 st.session_state.quiz_submitted = False
@@ -681,15 +664,15 @@ LANG = {
         "new_simulation_button": "새 시뮬레이션 시작",
         "history_selectbox_label": "로드할 이력을 선택하세요:",
         "history_load_button": "선택된 이력 로드",
-        "delete_history_button": "❌ 모든 이력 삭제", 
-        "delete_confirm_message": "정말로 모든 상담 이력을 삭제하시겠습니까? 되돌릴 수 없습니다。", 
-        "delete_confirm_yes": "예, 삭제합니다", 
-        "delete_confirm_no": "아니오, 유지합니다", 
-        "delete_success": "✅ 모든 상담 이력 삭제 완료!",
-        "deleting_history_progress": "이력 삭제 중...", 
-        "search_history_label": "이력 키워드 검색", 
-        "date_range_label": "날짜 범위 필터", 
-        "no_history_found": "검색 조건에 맞는 이력이 없습니다。" 
+        "delete_history_button": "❌ 모든 이력 삭제", # ⭐ 다국어 키 추가
+        "delete_confirm_message": "정말로 모든 상담 이력을 삭제하시겠습니까? 되돌릴 수 없습니다。", # ⭐ 다국어 키 추가
+        "delete_confirm_yes": "예, 삭제합니다", # ⭐ 다국어 키 추가
+        "delete_confirm_no": "아니오, 유지합니다", # ⭐ 다국어 키 추가
+        "delete_success": "✅ 모든 상담 이력 삭제 완료!", # ⭐ 다국어 키 추가
+        "deleting_history_progress": "이력 삭제 중...", # ⭐ 다국어 키 추가
+        "search_history_label": "이력 키워드 검색", # ⭐ 다국어 키 추가
+        "date_range_label": "날짜 범위 필터", # ⭐ 다국어 키 추가
+        "no_history_found": "검색 조건에 맞는 이력이 없습니다。" # ⭐ 다국어 키 추가
     },
     "en": {
         "title": "Personalized AI Study Coach",
@@ -1094,32 +1077,6 @@ st.title(L["title"])
 # ================================
 # 9. 기능별 페이지 구현
 # ================================
-
-# ⭐ 이력 삭제 함수 (Firestore 연동)
-def delete_all_history(db):
-    """Firestore의 모든 상담 이력을 삭제합니다."""
-    L = LANG[st.session_state.language] # 함수 내에서 L을 다시 정의
-    
-    if not db:
-        st.error(L["firestore_no_index"])
-        return
-    
-    try:
-        # 이터레이션을 위해 스트림 사용
-        docs = db.collection("simulation_histories").stream()
-        for doc in docs:
-            doc.reference.delete()
-        
-        # 세션 상태도 초기화
-        st.session_state.simulator_messages = []
-        st.session_state.simulator_memory.clear()
-        st.session_state.initial_advice_provided = False
-        st.session_state.show_delete_confirm = False
-        st.success(L["delete_success"]) # ⭐ 다국어 적용
-        st.rerun()
-        
-    except Exception as e:
-        st.error(f"이력 삭제 중 오류 발생: {e}")
 
 if feature_selection == L["simulator_tab"]: 
     st.header(L["simulator_header"])
