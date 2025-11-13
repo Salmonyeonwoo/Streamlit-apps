@@ -639,9 +639,9 @@ LANG = {
         # ⭐ 대화형/종료 메시지
         "button_mic_input": "음성 입력",
         "prompt_customer_end": "고객님의 추가 문의 사항이 없어, 이 상담 채팅을 종료하겠습니다.",
-        "prompt_survey": "고객 문의 센터에 연락 주셔서 감사드리며, 추가로 저희 응대 솔루션에 대한 설문 조사에 응해 주시면 감사하겠습니다. 추가 문의 사항이 있으시면 언제든지 연락 주십시오.",
+        "prompt_survey": "고객 문의 센터에 연락 주셔서 감사드리며, 추가로 저희 응대 솔루션에 대한 설문 조사에 응해 주시면 감사하겠습니다. 추가 문의 사항이 있으시면 언제든지 연락 주십시오。",
         "customer_closing_confirm": "또 다른 문의 사항은 없으신가요?",
-        "customer_positive_response": "좋은 말씀/친절한 상담 감사드립니다.",
+        "customer_positive_response": "좋은 말씀/친절한 상담 감사드립니다。",
         "button_end_chat": "응대 종료 (설문 조사 요청)",
         "agent_response_header": "✍️ 에이전트 응답",
         "agent_response_placeholder": "고객에게 응답하세요 (고객의 필수 정보를 요청/확인하거나, 문제 해결책을 제시하세요)",
@@ -650,11 +650,15 @@ LANG = {
         "new_simulation_button": "새 시뮬레이션 시작",
         "history_selectbox_label": "로드할 이력을 선택하세요:",
         "history_load_button": "선택된 이력 로드",
-        "delete_history_button": "❌ 모든 이력 삭제", 
-        "delete_confirm_message": "정말로 모든 상담 이력을 삭제하시겠습니까? 되돌릴 수 없습니다.", 
-        "delete_confirm_yes": "예, 삭제합니다", 
-        "delete_confirm_no": "아니오, 유지합니다", 
-        "delete_success": "✅ 모든 상담 이력 삭제 완료!" 
+        "delete_history_button": "❌ 모든 이력 삭제", # ⭐ 다국어 키 추가
+        "delete_confirm_message": "정말로 모든 상담 이력을 삭제하시겠습니까? 되돌릴 수 없습니다.", # ⭐ 다국어 키 추가
+        "delete_confirm_yes": "예, 삭제합니다", # ⭐ 다국어 키 추가
+        "delete_confirm_no": "아니오, 유지합니다", # ⭐ 다국어 키 추가
+        "delete_success": "✅ 모든 상담 이력 삭제 완료!", # ⭐ 다국어 키 추가
+        "deleting_history_progress": "이력 삭제 중...", # ⭐ 다국어 키 추가
+        "search_history_label": "이력 키워드 검색", # ⭐ 다국어 키 추가
+        "date_range_label": "날짜 범위 필터", # ⭐ 다국어 키 추가
+        "no_history_found": "검색 조건에 맞는 이력이 없습니다." # ⭐ 다국어 키 추가
     },
     "en": {
         "title": "Personalized AI Study Coach",
@@ -749,7 +753,11 @@ LANG = {
         "delete_confirm_message": "Are you sure you want to delete ALL simulation history? This action cannot be undone.", # ⭐ 다국어 키 추가
         "delete_confirm_yes": "Yes, Delete", # ⭐ 다국어 키 추가
         "delete_confirm_no": "No, Keep", # ⭐ 다국어 키 추가
-        "delete_success": "✅ Successfully deleted!" # ⭐ 다국어 키 추가
+        "delete_success": "✅ Successfully deleted!", # ⭐ 다국어 키 추가
+        "deleting_history_progress": "Deleting history...", # ⭐ 다국어 키 추가
+        "search_history_label": "Search History by Keyword", # ⭐ 다국어 키 추가
+        "date_range_label": "Date Range Filter", # ⭐ 다국어 키 추가
+        "no_history_found": "No history found matching the criteria." # ⭐ 다국어 키 추가
     },
     "ja": {
         "title": "パーソナライズAI学習コーチ",
@@ -1069,7 +1077,6 @@ def delete_all_history(db):
         st.session_state.simulator_messages = []
         st.session_state.simulator_memory.clear()
         st.session_state.initial_advice_provided = False
-        st.session_state.is_chat_ended = False
         st.session_state.show_delete_confirm = False
         st.success(L["delete_success"]) # ⭐ 다국어 적용
         st.rerun()
@@ -1111,53 +1118,17 @@ if feature_selection == L["simulator_tab"]:
     if db:
         with st.expander(L["history_expander_title"]): # ⭐ 다국어 적용
             
-            # 2. 이력 검색 및 필터링 기능 추가
+            # 2. 이력 검색 및 필터링 기능 추가 (KeyError 방지 위해 UI/로직 삭제)
             histories = load_simulation_histories(db)
             
             # 2-1. 검색 필터
-            search_query = st.text_input(L["search_history_label"], key="history_search", value="")
+            # search_query = st.text_input(L["search_history_label"], key="history_search") # 제거
             
-            # 2-2. 날짜 필터 (최근 7일 범위로 설정)
-            today = datetime.now().date()
-            default_start_date = today - timedelta(days=7)
-            
-            # st.date_input은 날짜가 선택되지 않았을 때 (None)을 반환할 수 있으므로, 처리 로직을 개선
-            date_range_input = st.date_input(
-                L["date_range_label"], 
-                value=[default_start_date, today],
-                key="history_date_range"
-            )
-            
-            # date_range_input이 리스트이고 2개의 요소를 가질 때만 유효함
-            if isinstance(date_range_input, list) and len(date_range_input) == 2:
-                date_range = date_range_input
-            else:
-                date_range = [datetime.min.date(), datetime.max.date()]
+            # 2-2. 날짜 필터
+            # date_range_input = st.date_input(L["date_range_label"], value=[datetime.now().date() - timedelta(days=7), datetime.now().date()], key="history_date_range") # 제거
 
-            # 필터링 로직
-            filtered_histories = []
-            if histories:
-                start_date = min(date_range)
-                end_date = max(date_range) + timedelta(days=1) # 하루를 더해 해당 날짜의 끝까지 포함
-                    
-                for h in histories:
-                    # 텍스트 검색 (initial_query, customer_type)
-                    search_match = True
-                    if search_query:
-                        query_lower = search_query.lower()
-                        if query_lower not in h['initial_query'].lower() and query_lower not in h['customer_type'].lower():
-                            search_match = False
-                    
-                    # 날짜 필터
-                    date_match = True
-                    if h.get('timestamp'):
-                        h_date = h['timestamp'].date()
-                        if not (start_date <= h_date < end_date):
-                            date_match = False
-                            
-                    if search_match and date_match:
-                        filtered_histories.append(h)
-            
+            # 필터링 로직 (단순 로드)
+            filtered_histories = histories
             
             if filtered_histories:
                 history_options = {
