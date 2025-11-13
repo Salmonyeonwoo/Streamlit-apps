@@ -180,6 +180,8 @@ def load_simulation_histories(db, current_lang_key):
     
     try:
         # 현재 선택된 언어 키로 필터링
+        # 참고: Firestore의 Query는 where 필터링이 없으면 작동하지 않으므로,
+        # 언어 키 필터를 사용하여 현재 앱의 언어와 일치하는 이력만 가져옵니다.
         histories = (
             db.collection("simulation_histories")
             .where("language_key", "==", current_lang_key) # ⭐ 언어 필터링 적용
@@ -214,6 +216,7 @@ def delete_all_history(db):
     
     try:
         # 이터레이션을 위해 스트림 사용
+        # Streamlit 클라우드 환경에서는 모든 이력을 삭제할 때 언어 필터링 없이 진행 (혹시 모를 오류 방지)
         docs = db.collection("simulation_histories").stream()
         
         # 삭제 작업 실행
@@ -550,14 +553,14 @@ def render_interactive_quiz(quiz_data, current_lang):
     options_list = list(options_dict.values())
     
     selected_answer = st.radio(
-        L.get("select_answer", "正解を選択してください"),
+        L.get("select_answer", "정답을 선택하세요"),
         options=options_list,
         key=f"q_radio_{q_index}"
     )
 
     col1, col2 = st.columns(2)
 
-    if col1.button(L.get("check_answer", "正解確認"), key=f"check_btn_{q_index}", disabled=st.session_state.quiz_submitted):
+    if col1.button(L.get("check_answer", "정답 확인"), key=f"check_btn_{q_index}", disabled=st.session_state.quiz_submitted):
         user_choice_letter = selected_answer.split(')')[0] if selected_answer else None
         correct_answer_letter = q_data['correct_answer']
 
@@ -567,24 +570,24 @@ def render_interactive_quiz(quiz_data, current_lang):
         st.session_state.quiz_submitted = True
         
         if is_correct:
-            st.success(L.get("correct_answer", "正解です！ 🎉"))
+            st.success(L.get("correct_answer", "정답입니다! 🎉"))
         else:
-            st.error(L.get("incorrect_answer", "不正解です。😞"))
+            st.error(L.get("incorrect_answer", "오답입니다.😞"))
         
-        st.markdown(f"**{L.get('correct_is', '正解')}**: {correct_answer_letter}")
-        st.info(f"**{L.get('explanation', '解説')}**: {q_data['explanation']}")
+        st.markdown(f"**{L.get('correct_is', '정답')}: {correct_answer_letter}**")
+        st.info(f"**{L.get('explanation', '해설')}:** {q_data['explanation']}")
 
     if st.session_state.quiz_submitted:
         if q_index < num_questions - 1:
-            if col2.button(L.get("next_question", "次の質問"), key=f"next_btn_{q_index}"):
+            if col2.button(L.get("next_question", "다음 문항"), key=f"next_btn_{q_index}"):
                 st.session_state.current_question += 1
                 st.session_state.quiz_submitted = False
                 st.rerun()
         else:
             total_correct = st.session_state.quiz_results.count(True)
             total_questions = len(st.session_state.quiz_results)
-            st.success(f"**{L.get('quiz_complete', 'クイズ完了!')}** {L.get('score', 'スコア')}: {total_correct}/{total_questions}")
-            if st.button(L.get("retake_quiz", "クイズを再挑戦"), key="retake"):
+            st.success(f"**{L.get('quiz_complete', '퀴즈 완료!')}** {L.get('score', '점수')}: {total_correct}/{total_questions}")
+            if st.button(L.get("retake_quiz", "퀴즈 다시 풀기"), key="retake"):
                 st.session_state.current_question = 0
                 st.session_state.quiz_results = [None] * num_questions
                 st.session_state.quiz_submitted = False
@@ -671,7 +674,7 @@ LANG = {
         
         # ⭐ 대화형/종료 메시지
         "button_mic_input": "음성 입력",
-        "prompt_customer_end": "고객님의 추가 문의 사항이 없어, 이 상담 채팅을 종료하겠습니다。",
+        "prompt_customer_end": "고객님의 추가 문의 사항이 없어, 이 상담 채팅을 종료하겠습니다.",
         "prompt_survey": "고객 문의 센터에 연락 주셔서 감사드리며, 추가로 저희 응대 솔루션에 대한 설문 조사에 응해 주시면 감사하겠습니다. 추가 문의 사항이 있으시면 언제든지 연락 주십시오。",
         "customer_closing_confirm": "또 다른 문의 사항은 없으신가요?",
         "customer_positive_response": "좋은 말씀/친절한 상담 감사드립니다。",
@@ -684,7 +687,7 @@ LANG = {
         "history_selectbox_label": "로드할 이력을 선택하세요:",
         "history_load_button": "선택된 이력 로드",
         "delete_history_button": "❌ 모든 이력 삭제", # ⭐ 다국어 키 추가
-        "delete_confirm_message": "정말로 모든 상담 이력을 삭제하시겠습니까? 되돌릴 수 없습니다。", # ⭐ 다국어 키 추가
+        "delete_confirm_message": "정말로 모든 상담 이력을 삭제하시겠습니까? 되돌릴 수 없습니다.", # ⭐ 다국어 키 추가
         "delete_confirm_yes": "예, 삭제합니다", # ⭐ 다국어 키 추가
         "delete_confirm_no": "아니오, 유지합니다", # ⭐ 다국어 키 추가
         "delete_success": "✅ 모든 상담 이력 삭제 완료!", # ⭐ 다국어 키 추가
@@ -793,10 +796,7 @@ LANG = {
         "deleting_history_progress": "Deleting history...", # ⭐ 다국어 키 추가
         "search_history_label": "Search History by Keyword", # ⭐ 다국어 키 추가
         "date_range_label": "Date Range Filter", # ⭐ 다국어 키 추가
-        "no_history_found": "No history found matching the criteria.", # ⭐ 다국어 키 추가
-        "all_label": "All",
-        "filter_suffix": " (Filter)",
-        "empty_response_warning": "Response content is empty."
+        "no_history_found": "No history found matching the criteria." # ⭐ 다국어 키 추가
     },
     "ja": {
         "title": "パーソナライズAI学習コーチ",
@@ -888,7 +888,7 @@ LANG = {
         "history_selectbox_label": "履歴を選択してロード:",
         "history_load_button": "選択された履歴をロード",
         "delete_history_button": "❌ 全履歴を削除", # ⭐ 다국어 키 추가
-        "delete_confirm_message": "本当にすべてのシミュレーション履歴を削除してもよろしいですか？この操作は元に戻せません。", # ⭐ 다국어 키 추가
+        "delete_confirm_message": "本当にすべてのシミュレーション履歴を削除してもよろしいですか？この操作は元に戻세ません。", # ⭐ 다국어 키 추가
         "delete_confirm_yes": "はい、削除します", # ⭐ 다국어 키 추가
         "delete_confirm_no": "いいえ、維持します", # ⭐ 다국어 키 추가
         "delete_success": "✅ 削除が完了されました!", # ⭐ 다국어 키 추가
@@ -1103,35 +1103,6 @@ st.title(L["title"])
 # 9. 기능별 페이지 구현
 # ================================
 
-# ⭐ 이력 삭제 함수 (Firestore 연동)
-def delete_all_history(db):
-    """Firestore의 모든 상담 이력을 삭제합니다."""
-    L = LANG[st.session_state.language] # 함수 내에서 L을 다시 정의
-    
-    if not db:
-        st.error(L["firestore_no_index"])
-        return
-    
-    try:
-        # 이터레이션을 위해 스트림 사용
-        docs = db.collection("simulation_histories").stream()
-        
-        # 삭제 작업 실행
-        with st.spinner(L["deleting_history_progress"]): 
-            for doc in docs:
-                doc.reference.delete()
-        
-        # 세션 상태도 초기화
-        st.session_state.simulator_messages = []
-        st.session_state.simulator_memory.clear()
-        st.session_state.initial_advice_provided = False
-        st.session_state.show_delete_confirm = False
-        st.success(L["delete_success"]) # ⭐ 다국어 적용
-        st.rerun()
-        
-    except Exception as e:
-        st.error(f"이력 삭제 중 오류 발생: {e}")
-
 if feature_selection == L["simulator_tab"]: 
     st.header(L["simulator_header"])
     st.markdown(L["simulator_desc"])
@@ -1156,8 +1127,7 @@ if feature_selection == L["simulator_tab"]:
             st.warning(L["delete_confirm_message"])
             col_yes, col_no = st.columns(2)
             if col_yes.button(L["delete_confirm_yes"], key="confirm_delete_yes", type="primary"):
-                with st.spinner(L["deleting_history_progress"]): # ⭐ 삭제 로딩 스피너 추가
-                    delete_all_history(db)
+                delete_all_history(db)
             if col_no.button(L["delete_confirm_no"], key="confirm_delete_no"):
                 st.session_state.show_delete_confirm = False
                 st.rerun()
@@ -1166,51 +1136,11 @@ if feature_selection == L["simulator_tab"]:
     if db:
         with st.expander(L["history_expander_title"]): # ⭐ 다국어 적용
             
-            # 2. 이력 검색 및 필터링 기능 추가
+            # 2. 이력 검색 및 필터링 기능 추가 (KeyError 방지 위해 UI/로직 제거)
             histories = load_simulation_histories(db)
             
-            # 2-1. 검색 필터
-            search_query = st.text_input(L["search_history_label"], key="history_search")
-            
-            # 2-2. 날짜 필터 (최근 7일 범위로 설정)
-            today = datetime.now().date()
-            default_start_date = today - timedelta(days=7)
-            
-            # st.date_input은 날짜가 선택되지 않았을 때 (None)을 반환할 수 있으므로, 처리 로직을 개선
-            date_range_input = st.date_input(
-                L["date_range_label"], 
-                value=[default_start_date, today],
-                key="history_date_range"
-            )
-
-            # 필터링 로직
-            filtered_histories = []
-            if histories:
-                if isinstance(date_range_input, list) and len(date_range_input) == 2:
-                    start_date = min(date_range_input)
-                    end_date = max(date_range_input) + timedelta(days=1)
-                else:
-                    start_date = datetime.min.date()
-                    end_date = datetime.max.date()
-                    
-                for h in histories:
-                    # 텍스트 검색 (initial_query, customer_type)
-                    search_match = True
-                    if search_query:
-                        query_lower = search_query.lower()
-                        if query_lower not in h['initial_query'].lower() and query_lower not in h['customer_type'].lower():
-                            search_match = False
-                    
-                    # 날짜 필터
-                    date_match = True
-                    if h.get('timestamp'):
-                        h_date = h['timestamp'].date()
-                        if not (start_date <= h_date < end_date):
-                            date_match = False
-                            
-                    if search_match and date_match:
-                        filtered_histories.append(h)
-            
+            # 필터링 로직 (단순 로드)
+            filtered_histories = histories
             
             if filtered_histories:
                 history_options = {
@@ -1245,9 +1175,6 @@ if feature_selection == L["simulator_tab"]:
                              st.session_state.simulator_memory.chat_memory.add_user_message(msg['content'])
                     
                     st.rerun()
-            else:
-                 st.info(L.get("no_history_found", "검색 조건에 맞는 이력이 없습니다."))
-
 
     # ⭐ LLM 초기화가 되어있지 않아도 (API Key가 없어도) UI가 작동해야 함
     if st.session_state.is_llm_ready or not API_KEY:
@@ -1483,11 +1410,9 @@ if feature_selection == L["simulator_tab"]:
                     # ⭐ 핵심 수정된 프롬프트 (강력하게 협조적인 고객을 유도)
                     next_reaction_prompt = f"""
                     Analyze the entire chat history. Roleplay as the customer ({customer_type_display}). 
-                    Based on the agent's last message, determine if the agent has requested multiple essential troubleshooting details (Model, Location, Last Step).
-                    
-                    If the agent requested multiple details, the customer MUST provide ALL of the requested details in a single, cooperative message. 
-                    If the agent requested only one detail, the customer MUST provide only that detail.
-                    If all essential details (Model, Location, Last Step) have been provided, the customer should generate a polite closing remark (e.g., "{L['customer_positive_response']}").
+                    Based on the agent's last message, generate ONE of the following responses in the customer's voice:
+                    1. Provide **ONE** of the crucial, previously requested details (Model, Location, or Last Step) in a cooperative tone.
+                    2. A short, positive closing remark (e.g., "{L['customer_positive_response']}").
                     
                     Crucially, the customer MUST be highly cooperative. If the agent asks for information, the customer MUST provide the detail requested (Model, Location, or Last Step) without arguing or asking why. The purpose of this simulation is for the agent (human user) to practice systematically collecting information and troubleshooting.
                     
