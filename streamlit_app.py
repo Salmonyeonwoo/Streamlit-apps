@@ -313,47 +313,56 @@ def render_tts_button(text_to_speak, current_lang_key):
 def get_mock_response_data(lang_key, customer_type):
     """API Key가 없을 때 사용할 가상 응대 데이터 (다국어 지원)"""
     
+    L = LANG[lang_key]
+    
     if lang_key == 'ko':
+        # ⭐ 수정된 중립적인 목업 데이터 템플릿
         initial_check = "고객님의 성함, 전화번호, 이메일 등 정확한 연락처 정보를 확인해 주시면 감사하겠습니다."
-        tone = "공감 및 진정"
-        advice = "이 고객은 매우 까다로운 성향이므로, 감정에 공감하면서도 정해진 정책 내에서 해결책을 단계적으로 제시해야 합니다. 성급한 확답은 피하세요."
+        tone = "공감 및 해결 중심"
+        advice = "이 고객은 {customer_type} 성향이지만, 문제 해결을 간절히 원합니다. 공감과 함께, 문제 해결에 필수적인 3가지 정보(기종명, 위치, 진행 단계)를 명확하게 요청해야 합니다. 불필요한 사족을 피하고 신뢰를 주도록 하세요."
         draft = f"""
 {initial_check}
 
-> 고객님, 먼저 주문하신 상품 배송이 늦어져 많이 불편하셨을 점 진심으로 사과드립니다. 고객님의 상황을 충분히 이해하고 있습니다.
-> 현재 시스템 상 확인된 바로는 [배송 지연 사유 설명]. 
-> 이 문제를 해결하기 위해, 저희가 [구체적인 해결책 1: 예: 담당 팀에 직접 연락] 및 [구체적인 해결책 2: 예: 오늘 중으로 상태 업데이트 재확인]을 진행하겠습니다.
-> 처리되는 대로 오늘 오후 [시간]까지 고객님께 개별적으로 연락드리겠습니다.
+> 고객님, 불편을 겪게 해드려 죄송합니다. 고객님의 상황을 충분히 이해하고 있습니다.
+> 문제 해결을 위해, 아래 세 가지 필수 정보를 확인해 주시면 감사하겠습니다. 이 정보가 있어야 고객님 상황에 맞는 정확한 해결책을 제시할 수 있습니다.
+> 1. 이용하시는 휴대폰의 **정확한 기종명** (예: iPhone 14 Pro, Samsung Galaxy S23 Ultra)
+> 2. 현재 **체류하고 계신 국가/도시** (예: 프랑스 파리, 아직 한국 등)
+> 3. 문제 발생 전 **마지막으로 시도한 단계** (예: eSIM 설치 QR 코드를 스캔했지만 오류가 났습니다, 데이터 로밍을 켰지만 안 됩니다 등)
 """
     elif lang_key == 'en':
-        initial_check = "Could you please confirm your accurate contact details, suchs your full name, phone number, and email address?"
-        tone = "Empathy and Calming Tone"
-        advice = "This customer is highly dissatisfied. You must apologize sincerely, explain the status transparently, and provide concrete next steps to solve the problem within policy boundaries. Avoid making hasty promises."
+        initial_check = "Could you please confirm your accurate contact details, such as your full name, phone number, and email address?"
+        tone = "Empathy and Solution-Focused"
+        advice = "This customer is {customer_type} but desperately wants a solution. Show empathy, but clearly request the three essential pieces of information (Model, Location, Last Step) needed for troubleshooting. Be direct and build trust."
         draft = f"""
 {initial_check}
 
-> Dear Customer, I sincerely apologize for the inconvenience caused by the delay in delivering your order. I completely understand your frustration.
-> Our system indicates [Reason for delay]. 
-> To resolve this, we will proceed with [Specific Solution 1: e.g., contacting the dedicated team immediately] and [Specific Solution 2: e.g., re-confirming the status update by end of day].
-> We will contact you personally by [Time] this afternoon with an update.
+> Dear Customer, I sincerely apologize for the inconvenience you are facing. I completely understand your frustration.
+> To proceed with troubleshooting, please confirm the three essential pieces of information below. This data is critical for providing you with the correct, tailored solution:
+> 1. The **exact model name** of your smartphone (e.g., iPhone 14 Pro, Samsung Galaxy S23 Ultra).
+> 2. Your **current location/city** (e.g., Paris, France, or still in your home country).
+> 3. The **last successful/attempted step** before the issue occurred (e.g., Scanned QR code but got an error, enabled data roaming but no connection, etc.).
 """
     elif lang_key == 'ja':
         initial_check = "お客様の氏名、お電話番号、Eメールアドレスなど、正確な連絡先情報を確認させていただけますでしょうか。"
-        tone = "共感と鎮静トーン"
-        advice = "このお客様は非常に難しい傾向にあるため、感情に共感しつつも、定められたポリシー内で解決策を段階的に提示する必要があります。安易な確約は避けてください。"
+        tone = "共感と解決中心"
+        advice = "このお客様は{customer_type}傾向ですが、問題の解決を強く望んでいます。共感を示しつつも、問題解決に不可欠な3つの情報（機種名、所在地、進行段階）を明確に尋ねる必要があります。冗長な説明を避け、信頼感を与える対応を心がけてください。"
         draft = f"""
 {initial_check}
 
-> お客様、ご注文商品の配送が遅れてしまい、大変ご迷惑をおかけしておりますことを心よりお詫び申し上げます。お客様のお気持ち、十分理解しております。
-> 現在システムで確認したところ、[遅延の理由を説明]。
-> この問題を解決するため、弊社にて[具体的な解決策1：例：担当チームに直接連絡]および[具体的な解決策2：例：本日中に再度状況を確認]をいたします。
-> 進捗があり次第、本日午後[時間]までに個別にご連絡差し上げます。
+> お客様、ご不便をおかけし、誠に申し訳ございません。現在の状況、十分承知いたしました。
+> 問題を迅速に解決するため、恐れ入りますが、以下の3点の必須情報についてご確認いただけますでしょうか。この情報がないと、お客様の状況に合わせた的確な解決策をご案内できません。
+> 1. ご利用のスマートフォンの**正確な機種名** (例: iPhone 14 Pro, Samsung Galaxy S23 Ultra など)。
+> 2. 現在**ご滞在の国・都市** (例: フランス・パリ、まだ日本国内、など)。
+> 3. 問題発生前に**最後に試された手順** (例: eSIMのQRコードをスキャンしたがエラーになった、データローミングを有効にしたが接続しない、など)。
 """
     
+    # advice 문자열 내부의 {customer_type}을 실제 선택 값으로 대체
+    advice_text = advice.replace("{customer_type}", customer_type)
+
     return {
-        "advice_header": f"{LANG[lang_key]['simulation_advice_header']}",
-        "advice": advice,
-        "draft_header": f"{LANG[lang_key]['simulation_draft_header']} ({tone})",
+        "advice_header": f"{L['simulation_advice_header']}",
+        "advice": advice_text,
+        "draft_header": f"{L['simulation_draft_header']} ({tone})",
         "draft": draft
     }
 
@@ -401,7 +410,7 @@ def get_document_chunks(files):
         else:
             print(f"File '{uploaded_file.name}' not supported.")
             continue
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+    text_splitter = RecursiveCharacterSplitter(chunk_size=1000, chunk_overlap=100)
     return text_splitter.split_documents(documents)
 
 def get_vector_store(text_chunks):
@@ -432,7 +441,8 @@ def get_rag_chain(vector_store):
 @st.cache_resource
 def load_or_train_lstm():
     """가상의 학습 성취도 예측을 위한 LSTM 모델을 생성하고 학습합니다."""
-    np.random.seed(int(time.time())) # ⭐ LSTM 결과를 랜덤화하기 위해 시드에 현재 시간을 사용
+    # ⭐ LSTM 결과를 랜덤화하기 위해 시드에 현재 시간을 사용
+    np.random.seed(int(time.time())) 
     data = np.cumsum(np.random.normal(loc=5, scale=5, size=50)) + 60
     data = np.clip(data, 50, 95)
     def create_dataset(dataset, look_back=3):
@@ -591,6 +601,9 @@ LANG = {
         "quiz_original_response": "LLM 원본 응답",
         "firestore_loading": "데이터베이스에서 RAG 인덱스 로드 중...",
         "firestore_no_index": "데이터베이스에서 기존 RAG 인덱스를 찾을 수 없습니다. 파일을 업로드하여 새로 만드세요.", 
+        "db_save_complete": "(DB 저장 완료)", # ⭐ 다국어 키 추가
+        "data_analysis_progress": "자료 분석 및 학습 DB 구축 중...", # ⭐ 다국어 키 추가
+        "response_generating": "답변 생성 중...", # ⭐ 다국어 키 추가
         "lstm_result_header": "학습 성취도 예측 결과",
         "lstm_score_metric": "현재 예측 성취도",
         "lstm_score_info": "다음 퀴즈 예상 점수는 약 **{predicted_score:.1f}점**입니다. 학습 성과를 유지하거나 개선하세요!",
@@ -627,7 +640,7 @@ LANG = {
         "agent_response_header": "✍️ 에이전트 응답",
         "agent_response_placeholder": "고객에게 응답하세요 (고객의 필수 정보를 요청/확인하거나, 문제 해결책을 제시하세요)",
         "send_response_button": "응답 전송",
-        "request_rebuttal_button": "고객의 다음 반응 요청", # ⭐ LLM 호출 텍스트 제거
+        "request_rebuttal_button": "고객의 다음 반응 요청",
         "new_simulation_button": "새 시뮬레이션 시작",
         "history_selectbox_label": "로드할 이력을 선택하세요:",
         "history_load_button": "선택된 이력 로드"
@@ -678,6 +691,9 @@ LANG = {
         "quiz_original_response": "Original LLM Response",
         "firestore_loading": "Loading RAG index from database...",
         "firestore_no_index": "Could not find existing RAG index in database. Please upload files and create a new one.", 
+        "db_save_complete": "(DB Save Complete)", # ⭐ 다국어 키 추가
+        "data_analysis_progress": "Analyzing materials and building learning DB...", # ⭐ 다국어 키 추가
+        "response_generating": "Generating response...", # ⭐ 다국어 키 추가
         "lstm_result_header": "Prediction Results",
         "lstm_score_metric": "Current Predicted Achievement",
         "lstm_score_info": "Your next estimated quiz score is **{predicted_score:.1f}**. Maintain or improve your learning progress!",
@@ -765,6 +781,9 @@ LANG = {
         "quiz_original_response": "LLM 原本応答",
         "firestore_loading": "データベースからRAGインデックスをロード中...",
         "firestore_no_index": "データベースで既存のRAGインデックスが見つかりません。ファイルをアップロードして新しく作成してください。", 
+        "db_save_complete": "(DB保存完了)", # ⭐ 다국어 키 추가
+        "data_analysis_progress": "資料分析および学習DB構築中...", # ⭐ 다국어 키 추가
+        "response_generating": "応答生成中...", # ⭐ 다국어 키 추가
         "lstm_result_header": "達成度予測結果",
         "lstm_score_metric": "現在の予測達成度",
         "lstm_score_info": "次のクイズの推定スコアは約 **{predicted_score:.1f}点**です。学習の成果を維持または向上させてください！",
@@ -969,7 +988,7 @@ with st.sidebar:
     
     if files_to_process and st.session_state.is_llm_ready:
         if st.button(L["button_start_analysis"], key="start_analysis"):
-            with st.spinner(f"자료 분석 및 학습 DB 구축 중..."):
+            with st.spinner(L["data_analysis_progress"]): # ⭐ 다국어 적용
                 text_chunks = get_document_chunks(files_to_process)
                 vector_store = get_vector_store(text_chunks)
                 
@@ -981,7 +1000,7 @@ with st.sidebar:
                         save_success = save_index_to_firestore(db, vector_store)
                     
                     if save_success:
-                        st.success(L["embed_success"].format(count=len(text_chunks)) + " (DB 저장 완료)")
+                        st.success(L["embed_success"].format(count=len(text_chunks)) + " " + L["db_save_complete"]) # ⭐ 다국어 적용
                     else:
                         st.success(L["embed_success"].format(count=len(text_chunks)) + " (DB 저장 실패)")
 
@@ -1127,9 +1146,11 @@ if feature_selection == L["simulator_tab"]:
             2. A concise and compassionate recommended response draft.
             
             The recommended draft MUST be strictly in {LANG[current_lang_key]['lang_select']} and MUST politely request the following **ESSENTIAL TROUBLESHOOTING INFORMATION** from the customer:
-            1. Smartphone Model Name (e.g., iPhone 14 Pro, Samsung Galaxy S23 Ultra) - This is critical for eSIM compatibility check.
+            1. Smartphone Model Name (e.g., iPhone 14 Pro, Samsung Galaxy S23 Ultra) - This is critical for compatibility check.
             2. Current location status (e.g., In Paris, France or Still in Korea) - This is critical for connection issues.
-            3. The last successful step completed based on the Klook eSIM guide (e.g., scanned QR code, 'Add eSIM' failed, activated data roaming, etc.) - This determines the troubleshooting path.
+            3. The last successful step completed based on the relevant guide (e.g., scanned QR code, 'Add eSIM' failed, activated data roaming, etc.) - This determines the troubleshooting path.
+            
+            Do NOT mention the eSIM product (Klook, Orange, SFR) specifically in the draft unless the customer query strictly demands it. Frame the information request as a standard procedure for efficient resolution.
 
             When the Agent subsequently asks for this information, **Roleplay as the Customer** who is slightly frustrated but **MUST BE HIGHLY COOPERATIVE** and provide the requested details piece by piece (not all at once). The customer MUST NOT argue or ask why the information is needed; they MUST immediately provide the requested detail to help the agent provide a solution quickly.
             """
@@ -1150,7 +1171,7 @@ if feature_selection == L["simulator_tab"]:
             
             if API_KEY:
                 # API Key가 있을 경우 LLM 호출
-                with st.spinner("AI 슈퍼바이저 조언 생성 중..."):
+                with st.spinner(L["response_generating"]): # ⭐ 다국어 적용
                     try:
                         if st.session_state.simulator_chain is None:
                             st.error(L['llm_error_init'] + " (시뮬레이터 체인 초기화 실패)")
@@ -1266,11 +1287,10 @@ if feature_selection == L["simulator_tab"]:
                     
                     Crucially, the customer MUST be highly cooperative. If the agent asks for information, the customer MUST provide the detail requested (Model, Location, or Last Step) without arguing or asking why. The purpose of this simulation is for the agent (human user) to practice systematically collecting information and troubleshooting.
                     
-                    Do not provide any resolution yourself. Just the customer's message.
-                    The response must be strictly in {LANG[current_lang_key]['lang_select']}.
+                    The response MUST be strictly in {LANG[current_lang_key]['lang_select']}.
                     """
                     
-                    with st.spinner("고객의 반응 생성 중..."):
+                    with st.spinner(L["response_generating"]): # ⭐ 다국어 적용
                         customer_reaction = st.session_state.simulator_chain.predict(input=next_reaction_prompt)
                         
                         # 긍정적 종료 키워드 확인 (대소문자 무시)
@@ -1314,7 +1334,7 @@ elif feature_selection == L["rag_tab"]:
             with st.chat_message("user"):
                 st.markdown(prompt)
             with st.chat_message("assistant"):
-                with st.spinner(f"답변 생성 중..." if st.session_state.language == 'ko' else "Generating response..."):
+                with st.spinner(L["response_generating"]): # ⭐ 다국어 적용
                     try:
                         response = st.session_state.conversation_chain.invoke({"question":prompt})
                         answer = response.get('answer','응답을 생성할 수 없습니다.' if st.session_state.language == 'ko' else 'Could not generate response.')
@@ -1411,15 +1431,11 @@ elif feature_selection == L["lstm_tab"]:
     st.header(L["lstm_header"])
     st.markdown(L["lstm_desc"])
     
-    # LSTM 함수 호출 시 time.time()을 시드로 사용하도록 변경했으므로,
-    # 버튼 클릭 시 load_or_train_lstm()을 다시 실행하도록 유도합니다.
     if st.button(L["lstm_rerun_button"], key="rerun_lstm", on_click=force_rerun_lstm):
-        pass # force_rerun_lstm()에서 이미 st.rerun()을 호출함
+        pass
     
     try:
         # st.session_state.lstm_rerun_trigger가 변경될 때마다 캐시가 무효화되고 함수가 실행됨
-        # (단, st.cache_resource는 Streamlit의 실행 모델 때문에 완벽하게 강제 재실행을 보장하지 않으므로, 
-        # time.time()을 시드로 넣어 결과가 '달라지도록' 유도하는 것이 최선입니다.)
         model, data = load_or_train_lstm()
         look_back = 5
         # 예측
