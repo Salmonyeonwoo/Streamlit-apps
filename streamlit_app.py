@@ -747,12 +747,16 @@ LANG = {
         "request_rebuttal_button": "Request Customer's Next Reaction",
         "new_simulation_button": "Start New Simulation",
         "history_selectbox_label": "Select history to load:",
-        "history_load_button": "Load Selected History",
+        "history_load_button": "Load Selected History",        
         "delete_history_button": "❌ Delete All History", # ⭐ 다국어 키 추가
         "delete_confirm_message": "Are you sure you want to delete ALL simulation history? This action cannot be undone.", # ⭐ 다국어 키 추가
         "delete_confirm_yes": "Yes, Delete", # ⭐ 다국어 키 추가
         "delete_confirm_no": "No, Keep", # ⭐ 다국어 키 추가
         "delete_success": "✅ Successfully deleted!" # ⭐ 다국어 키 추가
+        "deleting_history_progress": "Progress for deletion...", # ⭐ 다국어 키 추가
+        "search_history_label": "Searching the keywords from histories", # ⭐ 다국어 키 추가
+        "date_range_label": "Filtering the ranges of dates", # ⭐ 다국어 키 추가
+        "no_history_found": "No other applicable histories are confirmed for requested conditions" # ⭐ 다국어 키 추가
     },
     "ja": {
         "title": "パーソナライズAI学習コーチ",
@@ -848,6 +852,10 @@ LANG = {
         "delete_confirm_yes": "はい、削除します", # ⭐ 다국어 키 추가
         "delete_confirm_no": "いいえ、維持します", # ⭐ 다국어 키 추가
         "delete_success": "✅ 削除が完了されました!" # ⭐ 다국어 키 추가
+        "deleting_history_progress": "削除中。。。", # ⭐ 다국어 키 추가
+        "search_history_label": "履歴からキーワードを検索する", # ⭐ 다국어 키 추가
+        "date_range_label": "日付の範囲をフィルターする", # ⭐ 다국어 키 추가
+        "no_history_found": "求められた条件に合わせられる履歴のキーワードが検索されません。" # ⭐ 다국어 키 추가
     }
 }
 
