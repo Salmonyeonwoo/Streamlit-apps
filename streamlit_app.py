@@ -181,6 +181,8 @@ def load_simulation_histories(db):
     
     try:
         # 현재 선택된 언어 키로 필터링
+        # 참고: Firestore의 Query는 where 필터링이 없으면 작동하지 않으므로,
+        # 언어 키 필터를 사용하여 현재 앱의 언어와 일치하는 이력만 가져옵니다.
         histories = (
             db.collection("simulation_histories")
             .where("language_key", "==", current_lang_key) # ⭐ 언어 필터링 적용
@@ -225,7 +227,6 @@ def delete_all_history(db):
         # 세션 상태도 초기화
         st.session_state.simulator_messages = []
         st.session_state.simulator_memory.clear()
-        st.session_state.initial_advice_provided = False
         st.session_state.show_delete_confirm = False
         st.success(L["delete_success"]) # ⭐ 다국어 적용
         st.rerun()
@@ -876,12 +877,21 @@ LANG = {
         "customer_positive_response": "親切なご対応ありがとうございました。",
         "button_end_chat": "対応終了 (アンケートを依頼)",
         "agent_response_header": "✍️ エージェント応答",
-        "agent_response_placeholder": "顧客に返信 (必須情報の要求/확인、または解決策の提示)",
+        "agent_response_placeholder": "顧客に返信 (必須情報の要求/確認、または解決策の提示)",
         "send_response_button": "応答送信",
         "request_rebuttal_button": "顧客の次の反応を要求", 
         "new_simulation_button": "新しいシミュレーションを開始",
         "history_selectbox_label": "履歴を選択してロード:",
-        "history_load_button": "選択された履歴をロード"
+        "history_load_button": "選択された履歴をロード",
+        "delete_history_button": "❌ 全履歴を削除", # ⭐ 다국어 키 추가
+        "delete_confirm_message": "本当にすべてのシミュレーション履歴を削除してもよろしいですか？この操作は元に戻せません。", # ⭐ 다국어 키 추가
+        "delete_confirm_yes": "はい、削除します", # ⭐ 다국어 키 추가
+        "delete_confirm_no": "いいえ、維持します", # ⭐ 다국어 키 추가
+        "delete_success": "✅ 削除が完了されました!", # ⭐ 다국어 키 추가
+        "deleting_history_progress": "履歴削除中...", # ⭐ 다국어 키 추가
+        "search_history_label": "履歴キーワード検索", # ⭐ 다국어 키 추가
+        "date_range_label": "日付範囲フィルター", # ⭐ 다국어 키 추가
+        "no_history_found": "検索条件に一致する履歴はありません。" # ⭐ 다국어 키 추가
     }
 }
 
@@ -1124,8 +1134,7 @@ if feature_selection == L["simulator_tab"]:
         with st.expander(L["history_expander_title"]): # ⭐ 다국어 적용
             
             # 2. 이력 검색 및 필터링 기능 추가
-            # load_simulation_histories에 현재 언어 키 전달 (언어별 데이터 분리)
-            histories = load_simulation_histories(db, st.session_state.language) 
+            histories = load_simulation_histories(db)
             
             # 2-1. 검색 필터
             search_query = st.text_input(L["search_history_label"], key="history_search")
@@ -1358,28 +1367,23 @@ if feature_selection == L["simulator_tab"]:
                 # HTML과 JavaScript를 사용하여 Enter 키 전송 로직 삽입
                 js_code_for_enter = f"""
                 <script>
-                function setupEnterSend() {{
-                    // st.text_area의 키가 'agent_response_area_text'인 요소를 찾습니다.
-                    const textarea = document.querySelector('textarea[key="agent_response_area_text"]');
-                    const button = document.querySelector('button[key="send_agent_response"]');
-                    
-                    if (textarea && button) {{
-                        textarea.addEventListener('keydown', function(event) {{
-                            // Shift + Enter 또는 Ctrl + Enter는 줄바꿈
-                            if (event.key === 'Enter' && (event.shiftKey || event.ctrlKey)) {{
-                                // 기본 동작(줄바꿈) 허용
-                            }} 
-                            // Enter만 눌렀을 때 전송
-                            else if (event.key === 'Enter') {{
-                                event.preventDefault(); // 기본 Enter 동작(줄바꿈) 방지
-                                button.click();
-                            }}
-                        }});
-                    }}
-                }}
+                // st.text_area의 키가 'agent_response_area_text'인 요소를 찾습니다.
+                const textarea = document.querySelector('textarea[key="agent_response_area_text"]');
+                const button = document.querySelector('button[key="send_agent_response"]');
                 
-                // 페이지 로드 시 및 Streamlit 재실행 시 셋업
-                setTimeout(setupEnterSend, 100); 
+                if (textarea && button) {{
+                    textarea.addEventListener('keydown', function(event) {{
+                        // Shift + Enter 또는 Ctrl + Enter는 줄바꿈
+                        if (event.key === 'Enter' && (event.shiftKey || event.ctrlKey)) {{
+                            // 기본 동작(줄바꿈) 허용
+                        }} 
+                        // Enter만 눌렀을 때 전송
+                        else if (event.key === 'Enter') {{
+                            event.preventDefault(); // 기본 Enter 동작(줄바꿈) 방지
+                            button.click();
+                        }}
+                    }});
+                }}
                 </script>
                 """
                 
@@ -1443,11 +1447,9 @@ if feature_selection == L["simulator_tab"]:
                     # ⭐ 핵심 수정된 프롬프트 (강력하게 협조적인 고객을 유도)
                     next_reaction_prompt = f"""
                     Analyze the entire chat history. Roleplay as the customer ({customer_type_display}). 
-                    Based on the agent's last message, determine if the agent has requested multiple essential troubleshooting details (Model, Location, Last Step).
-                    
-                    If the agent requested multiple details, the customer MUST provide ALL of the requested details in a single, cooperative message. 
-                    If the agent requested only one detail, the customer MUST provide only that detail.
-                    If all essential details (Model, Location, Last Step) have been provided, the customer should generate a polite closing remark (e.g., "{L['customer_positive_response']}").
+                    Based on the agent's last message, generate ONE of the following responses in the customer's voice:
+                    1. Provide **ONE** of the crucial, previously requested details (Model, Location, or Last Step) in a cooperative tone.
+                    2. A short, positive closing remark (e.g., "{L['customer_positive_response']}").
                     
                     Crucially, the customer MUST be highly cooperative. If the agent asks for information, the customer MUST provide the detail requested (Model, Location, or Last Step) without arguing or asking why. The purpose of this simulation is for the agent (human user) to practice systematically collecting information and troubleshooting.
                     
