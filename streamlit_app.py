@@ -650,15 +650,15 @@ LANG = {
         "new_simulation_button": "새 시뮬레이션 시작",
         "history_selectbox_label": "로드할 이력을 선택하세요:",
         "history_load_button": "선택된 이력 로드",
-        "delete_history_button": "❌ 모든 이력 삭제", # ⭐ 다국어 키 추가
-        "delete_confirm_message": "정말로 모든 상담 이력을 삭제하시겠습니까? 되돌릴 수 없습니다.", # ⭐ 다국어 키 추가
-        "delete_confirm_yes": "예, 삭제합니다", # ⭐ 다국어 키 추가
-        "delete_confirm_no": "아니오, 유지합니다", # ⭐ 다국어 키 추가
-        "delete_success": "✅ 모든 상담 이력 삭제 완료!", # ⭐ 다국어 키 추가
-        "deleting_history_progress": "이력 삭제 중...", # ⭐ 다국어 키 추가
-        "search_history_label": "이력 키워드 검색", # ⭐ 다국어 키 추가
-        "date_range_label": "날짜 범위 필터", # ⭐ 다국어 키 추가
-        "no_history_found": "검색 조건에 맞는 이력이 없습니다." # ⭐ 다국어 키 추가
+        "delete_history_button": "❌ 모든 이력 삭제", 
+        "delete_confirm_message": "정말로 모든 상담 이력을 삭제하시겠습니까? 되돌릴 수 없습니다.", 
+        "delete_confirm_yes": "예, 삭제합니다", 
+        "delete_confirm_no": "아니오, 유지합니다", 
+        "delete_success": "✅ 모든 상담 이력 삭제 완료!",
+        "deleting_history_progress": "이력 삭제 중...", 
+        "search_history_label": "이력 키워드 검색", 
+        "date_range_label": "날짜 범위 필터", 
+        "no_history_found": "검색 조건에 맞는 이력이 없습니다." 
     },
     "en": {
         "title": "Personalized AI Study Coach",
@@ -847,7 +847,12 @@ LANG = {
         "request_rebuttal_button": "顧客の次の反応を要求", 
         "new_simulation_button": "新しいシミュレーションを開始",
         "history_selectbox_label": "履歴を選択してロード:",
-        "history_load_button": "選択された履歴をロード"
+        "history_load_button": "選択された履歴をロード",
+        "delete_history_button": "❌ 全履歴を削除", 
+        "delete_confirm_message": "本当にすべてのシミュレーション履歴を削除してもよろしいですか？この操作は元に戻せません。", 
+        "delete_confirm_yes": "はい、削除します", 
+        "delete_confirm_no": "いいえ、維持します", 
+        "delete_success": "✅ 削除が完了されました!" 
     }
 }
 
@@ -1108,7 +1113,6 @@ if feature_selection == L["simulator_tab"]:
             st.warning(L["delete_confirm_message"])
             col_yes, col_no = st.columns(2)
             if col_yes.button(L["delete_confirm_yes"], key="confirm_delete_yes", type="primary"):
-                # ⭐ 이력 삭제 시 로딩 스피너는 함수 내부에서 처리
                 delete_all_history(db)
             if col_no.button(L["delete_confirm_no"], key="confirm_delete_no"):
                 st.session_state.show_delete_confirm = False
@@ -1118,22 +1122,13 @@ if feature_selection == L["simulator_tab"]:
     if db:
         with st.expander(L["history_expander_title"]): # ⭐ 다국어 적용
             
-            # 2. 이력 검색 및 필터링 기능 추가 (KeyError 방지 위해 UI/로직 삭제)
+            # 2. 이력 검색 및 필터링 기능 (안정성 확보를 위해 단순 로드로 변경)
             histories = load_simulation_histories(db)
             
-            # 2-1. 검색 필터
-            # search_query = st.text_input(L["search_history_label"], key="history_search") # 제거
-            
-            # 2-2. 날짜 필터
-            # date_range_input = st.date_input(L["date_range_label"], value=[datetime.now().date() - timedelta(days=7), datetime.now().date()], key="history_date_range") # 제거
-
-            # 필터링 로직 (단순 로드)
-            filtered_histories = histories
-            
-            if filtered_histories:
+            if histories:
                 history_options = {
                     f"[{h['timestamp'].strftime('%m-%d %H:%M')}] {h['customer_type']} - {h['initial_query'][:30]}...": h
-                    for h in filtered_histories
+                    for h in histories
                 }
                 
                 selected_key = st.selectbox(
@@ -1164,7 +1159,7 @@ if feature_selection == L["simulator_tab"]:
                     
                     st.rerun()
             else:
-                 st.info(L.get("no_history_found", "검색 조건에 맞는 이력이 없습니다."))
+                 st.info(L.get("no_history_found", "이력이 없습니다."))
 
 
     # ⭐ LLM 초기화가 되어있지 않아도 (API Key가 없어도) UI가 작동해야 함
