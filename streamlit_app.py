@@ -14,6 +14,7 @@ from bs4 import BeautifulSoup
 import matplotlib.pyplot as plt
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense
+from datetime import datetime, timedelta # 날짜/시간 필터링을 위해 추가
 
 # ⭐ Admin SDK 관련 라이브러리 임포트
 from firebase_admin import credentials, firestore, initialize_app, get_app
@@ -637,10 +638,10 @@ LANG = {
         
         # ⭐ 대화형/종료 메시지
         "button_mic_input": "음성 입력",
-        "prompt_customer_end": "고객님의 추가 문의 사항이 없어, 이 상담 채팅을 종료하겠습니다.",
-        "prompt_survey": "고객 문의 센터에 연락 주셔서 감사드리며, 추가로 저희 응대 솔루션에 대한 설문 조사에 응해 주시면 감사하겠습니다. 추가 문의 사항이 있으시면 언제든지 연락 주십시오.",
+        "prompt_customer_end": "고객님의 추가 문의 사항이 없어, 이 상담 채팅을 종료하겠습니다。",
+        "prompt_survey": "고객 문의 센터에 연락 주셔서 감사드리며, 추가로 저희 응대 솔루션에 대한 설문 조사에 응해 주시면 감사하겠습니다. 추가 문의 사항이 있으시면 언제든지 연락 주십시오。",
         "customer_closing_confirm": "또 다른 문의 사항은 없으신가요?",
-        "customer_positive_response": "좋은 말씀/친절한 상담 감사드립니다.",
+        "customer_positive_response": "좋은 말씀/친절한 상담 감사드립니다。",
         "button_end_chat": "응대 종료 (설문 조사 요청)",
         "agent_response_header": "✍️ 에이전트 응답",
         "agent_response_placeholder": "고객에게 응답하세요 (고객의 필수 정보를 요청/확인하거나, 문제 해결책을 제시하세요)",
@@ -649,11 +650,11 @@ LANG = {
         "new_simulation_button": "새 시뮬레이션 시작",
         "history_selectbox_label": "로드할 이력을 선택하세요:",
         "history_load_button": "선택된 이력 로드",
-        "delete_history_button": "❌ 모든 이력 삭제", 
-        "delete_confirm_message": "정말로 모든 상담 이력을 삭제하시겠습니까? 되돌릴 수 없습니다.", 
-        "delete_confirm_yes": "예, 삭제합니다", 
-        "delete_confirm_no": "아니오, 유지합니다", 
-        "delete_success": "✅ 모든 상담 이력 삭제 완료!" 
+        "delete_history_button": "❌ 모든 이력 삭제", # ⭐ 다국어 키 추가
+        "delete_confirm_message": "정말로 모든 상담 이력을 삭제하시겠습니까? 되돌릴 수 없습니다.", # ⭐ 다국어 키 추가
+        "delete_confirm_yes": "예, 삭제합니다", # ⭐ 다국어 키 추가
+        "delete_confirm_no": "아니오, 유지합니다", # ⭐ 다국어 키 추가
+        "delete_success": "✅ 모든 상담 이력 삭제 완료!" # ⭐ 다국어 키 추가
     },
     "en": {
         "title": "Personalized AI Study Coach",
@@ -744,11 +745,11 @@ LANG = {
         "new_simulation_button": "Start New Simulation",
         "history_selectbox_label": "Select history to load:",
         "history_load_button": "Load Selected History",
-        "delete_history_button": "❌ Delete All History", 
-        "delete_confirm_message": "Are you sure you want to delete ALL simulation history? This action cannot be undone.", 
-        "delete_confirm_yes": "Yes, Delete", 
-        "delete_confirm_no": "No, Keep", 
-        "delete_success": "✅ All simulation history deleted!" 
+        "delete_history_button": "❌ Delete All History", # ⭐ 다국어 키 추가
+        "delete_confirm_message": "Are you sure you want to delete ALL simulation history? This action cannot be undone.", # ⭐ 다국어 키 추가
+        "delete_confirm_yes": "Yes, Delete", # ⭐ 다국어 키 추가
+        "delete_confirm_no": "No, Keep", # ⭐ 다국어 키 추가
+        "delete_success": "✅ Successfully deleted!" # ⭐ 다국어 키 추가
     },
     "ja": {
         "title": "パーソナライズAI学習コーチ",
@@ -838,7 +839,12 @@ LANG = {
         "request_rebuttal_button": "顧客の次の反応を要求", 
         "new_simulation_button": "新しいシミュレーションを開始",
         "history_selectbox_label": "履歴を選択してロード:",
-        "history_load_button": "選択された履歴をロード"
+        "history_load_button": "選択された履歴をロード",
+        "delete_history_button": "❌ 全履歴を削除", # ⭐ 다국어 키 추가
+        "delete_confirm_message": "本当にすべてのシミュレーション履歴を削除してもよろしいですか？この操作は元に戻せません。", # ⭐ 다국어 키 추가
+        "delete_confirm_yes": "はい、削除します", # ⭐ 다국어 키 추가
+        "delete_confirm_no": "いいえ、維持します", # ⭐ 다국어 키 추가
+        "delete_success": "✅ 削除が完了されました!" # ⭐ 다국어 키 추가
     }
 }
 
@@ -1049,6 +1055,8 @@ st.title(L["title"])
 # ⭐ 이력 삭제 함수 (Firestore 연동)
 def delete_all_history(db):
     """Firestore의 모든 상담 이력을 삭제합니다."""
+    L = LANG[st.session_state.language]
+    
     if not db:
         st.error(L["firestore_no_index"])
         return
@@ -1056,6 +1064,8 @@ def delete_all_history(db):
     try:
         # 이터레이션을 위해 스트림 사용
         docs = db.collection("simulation_histories").stream()
+        
+        # 삭제 작업 실행
         for doc in docs:
             doc.reference.delete()
         
@@ -1087,6 +1097,7 @@ if feature_selection == L["simulator_tab"]:
     db = st.session_state.get('firestore_db')
     col_delete, _ = st.columns([1, 4])
     with col_delete:
+        # ⭐ KeyError 수정: 버튼 레이블만 전달하고 key는 별도로 설정
         if st.button(L["delete_history_button"], key="trigger_delete_history"):
             st.session_state.show_delete_confirm = True
 
@@ -1095,7 +1106,8 @@ if feature_selection == L["simulator_tab"]:
             st.warning(L["delete_confirm_message"])
             col_yes, col_no = st.columns(2)
             if col_yes.button(L["delete_confirm_yes"], key="confirm_delete_yes", type="primary"):
-                delete_all_history(db)
+                with st.spinner(L["deleting_history_progress"]): # ⭐ 삭제 로딩 스피너 추가
+                    delete_all_history(db)
             if col_no.button(L["delete_confirm_no"], key="confirm_delete_no"):
                 st.session_state.show_delete_confirm = False
                 st.rerun()
@@ -1208,7 +1220,7 @@ if feature_selection == L["simulator_tab"]:
             The recommended draft MUST be strictly in {LANG[current_lang_key]['lang_select']}.
             
             **CRITICAL RULE FOR DRAFT CONTENT:**
-            - **Core Topic Filtering:** Analyze the customer's inquiry to determine its main subject. 
+            - **Core Topic Filtering:** Analyze the customer's inquiry to determine its main subject (e.g., eSIM issue, ticket price, refund). 
             - **Draft Content:** The draft MUST address the core topic directly. The draft MUST ONLY request *general* information needed for ALL inquiries (like booking ID, contact info). 
             - **Technical Info:** The draft MUST NOT include specific technical troubleshooting requests (Smartphone model, Location, Last Step of troubleshooting) **UNLESS** the core inquiry is explicitly about connection/activation failures (like "won't activate" or "no connection"). If the inquiry is about eSIM activation failure, use a standard troubleshooting request template.
             
