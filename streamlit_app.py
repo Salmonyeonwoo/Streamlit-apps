@@ -39,24 +39,24 @@ from langchain.prompts import PromptTemplate # ⭐ PromptTemplate 임포트
 
 def _get_admin_credentials():
     """Secrets에서 서비스 계정 정보를 안전하게 로드하고 딕셔너리로 반환합니다."""
-    if "FIREBASE_SERVICE_ACCOUNT_JSON" not in st.secrets:
-        return None, "FIREBASE_SERVICE_ACCOUNT_JSON Secret이 누락되었습니다."
+    if "FIREBASE_SECRETS_JSON" not in st.secrets:
+        return None, "FIREBASE_SECRETS_JSON Secret이 누락되었습니다."
     
-    service_account_data = st.secrets["FIREBASE_SERVICE_ACCOUNT_JSON"]
+    service_account_data = st.secrets["FIREBASE_SECRETS_JSON"]
     sa_info = None
 
     if isinstance(service_account_data, str):
         try:
             sa_info = json.loads(service_account_data.strip())
         except json.JSONDecodeError as e:
-            return None, f"FIREBASE_SERVICE_ACCOUNT_JSON의 JSON 구문 오류입니다. 값을 확인하세요. 상세 오류: {e}"
+            return None, f"FIREBASE_SECRETS_JSON의 JSON 구문 오류입니다. 값을 확인하세요. 상세 오류: {e}"
     elif hasattr(service_account_data, 'get'):
         try:
             sa_info = dict(service_account_data) # AttrDict를 표준 dict로 변환
         except Exception:
-             return None, f"FIREBASE_SERVICE_ACCOUNT_JSON의 딕셔너리 변환 실패. 타입: {type(service_account_data)}"
+             return None, f"FIREBASE_SECRETS_JSON의 딕셔너리 변환 실패. 타입: {type(service_account_data)}"
     else:
-        return None, f"FIREBASE_SERVICE_ACCOUNT_JSON의 형식이 올바르지 않습니다. (Type: {type(service_account_data)})"
+        return None, f"FIREBASE_SECRETS_JSON의 형식이 올바르지 않습니다. (Type: {type(service_account_data)})"
     
     if not sa_info.get("project_id") or not sa_info.get("private_key"):
         return None, "JSON 내 'project_id' 또는 'private_key' 필드가 누락되었습니다."
@@ -261,12 +261,12 @@ def synthesize_and_play_audio(current_lang_key):
         
         // 이벤트 핸들러 설정
         utterance.onstart = () => {{
-            statusElement.innerText = '{LANG[current_lang_key].get("tts_status_generating", "オーディオ生成中...")}';
+            statusElement.innerText = '{LANG[current_lang_key].get("tts_status_generating", "오디오 생성 중...")}';
             statusElement.style.backgroundColor = '#fff3e0';
         }};
         
         utterance.onend = () => {{
-            statusElement.innerText = '{LANG[current_lang_key].get("tts_status_success", "✅ オーディオ再生完了!")}';
+            statusElement.innerText = '{LANG[current_lang_key].get("tts_status_success", "✅ 오디오 재생 완료!")}';
             statusElement.style.backgroundColor = '#e8f5e9';
              setTimeout(() => {{ 
                  statusElement.innerText = getReadyText(langKey);
@@ -275,7 +275,7 @@ def synthesize_and_play_audio(current_lang_key):
         }};
         
         utterance.onerror = (event) => {{
-            statusElement.innerText = '{LANG[current_lang_key].get("tts_status_error", "❌ TTSエラー発生")}';
+            statusElement.innerText = '{LANG[current_lang_key].get("tts_status_error", "❌ TTS 오류 발생")}';
             statusElement.style.backgroundColor = '#ffebee';
             console.error("SpeechSynthesis Error:", event);
              setTimeout(() => {{ 
@@ -285,7 +285,7 @@ def synthesize_and_play_audio(current_lang_key):
         }};
 
         window.speechSynthesis.cancel(); // Stop any current speech
-        setVoiceAndSpeak(); // 再生開始
+        setVoiceAndSpeak(); // 재생 시작
 
     }};
     </script>
@@ -747,16 +747,16 @@ LANG = {
         "request_rebuttal_button": "Request Customer's Next Reaction",
         "new_simulation_button": "Start New Simulation",
         "history_selectbox_label": "Select history to load:",
-        "history_load_button": "Load Selected History",        
-        "delete_history_button": "❌ Delete All History", # ⭐ 다국어 키 추가
-        "delete_confirm_message": "Are you sure you want to delete ALL simulation history? This action cannot be undone.", # ⭐ 다국어 키 추가
-        "delete_confirm_yes": "Yes, Delete", # ⭐ 다국어 키 추가
-        "delete_confirm_no": "No, Keep", # ⭐ 다국어 키 추가
-        "delete_success": "✅ Successfully deleted!", # ⭐ 다국어 키 추가
-        "deleting_history_progress": "Progress for deletion...", # ⭐ 다국어 키 추가
-        "search_history_label": "Searching the keywords from histories", # ⭐ 다국어 키 추가
-        "date_range_label": "Filtering the ranges of dates", # ⭐ 다국어 키 추가
-        "no_history_found": "No other applicable histories are confirmed for requested conditions" # ⭐ 다국어 키 추가
+        "history_load_button": "Load Selected History",
+        "delete_history_button": "❌ Delete All History", 
+        "delete_confirm_message": "Are you sure you want to delete ALL simulation history? This action cannot be undone.", 
+        "delete_confirm_yes": "Yes, Delete", 
+        "delete_confirm_no": "No, Keep", 
+        "delete_success": "✅ All simulation history deleted!", 
+        "deleting_history_progress": "Deleting history...", 
+        "search_history_label": "Search History by Keyword", 
+        "date_range_label": "Date Range Filter", 
+        "no_history_found": "No history found matching the criteria." 
     },
     "ja": {
         "title": "パーソナライズAI学習コーチ",
@@ -800,7 +800,7 @@ LANG = {
         "quiz_complete": "クイズ完了!",
         "score": "スコア",
         "retake_quiz": "クイズを再挑戦",
-        "quiz_error_llm": "LLMが正しいJSONの形式を読み取れませんでしたので、クイズの生成が失敗しました。",
+        "quiz_error_llm": "クイズ生成失敗: LLMが正しいJSONの形式を読み取れませんでしたので、クイズの生成が失敗しました。",
         "quiz_original_response": "LLM 原本応答",
         "firestore_loading": "データベースからRAGインデックスをロード中...",
         "firestore_no_index": "データベースで既存のRAGインデックスが見つかりません。ファイルをアップロードして新しく作成してください。", 
@@ -852,10 +852,10 @@ LANG = {
         "delete_confirm_yes": "はい、削除します", # ⭐ 다국어 키 추가
         "delete_confirm_no": "いいえ、維持します", # ⭐ 다국어 키 추가
         "delete_success": "✅ 削除が完了されました!", # ⭐ 다국어 키 추가
-        "deleting_history_progress": "削除中。。。", # ⭐ 다국어 키 추가
-        "search_history_label": "履歴からキーワードを検索する", # ⭐ 다국어 키 추가
-        "date_range_label": "日付の範囲をフィルターする", # ⭐ 다국어 키 추가
-        "no_history_found": "求められた条件に合わせられる履歴のキーワードが検索されません。" # ⭐ 다국어 키 추가
+        "deleting_history_progress": "履歴削除中...", # ⭐ 다국어 키 추가
+        "search_history_label": "履歴キーワード検索", # ⭐ 다국어 키 추가
+        "date_range_label": "日付範囲フィルター", # ⭐ 다국어 키 추가
+        "no_history_found": "検索条件に一致する履歴はありません。" # ⭐ 다국어 키 추가
     }
 }
 
@@ -1075,8 +1075,11 @@ def delete_all_history(db):
     try:
         # 이터레이션을 위해 스트림 사용
         docs = db.collection("simulation_histories").stream()
-        for doc in docs:
-            doc.reference.delete()
+        
+        # 삭제 작업 실행
+        with st.spinner(L["deleting_history_progress"]): 
+            for doc in docs:
+                doc.reference.delete()
         
         # 세션 상태도 초기화
         st.session_state.simulator_messages = []
@@ -1113,8 +1116,7 @@ if feature_selection == L["simulator_tab"]:
             st.warning(L["delete_confirm_message"])
             col_yes, col_no = st.columns(2)
             if col_yes.button(L["delete_confirm_yes"], key="confirm_delete_yes", type="primary"):
-                with st.spinner(L["deleting_history_progress"]): # ⭐ 삭제 로딩 스피너 추가
-                    delete_all_history(db)
+                delete_all_history(db)
             if col_no.button(L["delete_confirm_no"], key="confirm_delete_no"):
                 st.session_state.show_delete_confirm = False
                 st.rerun()
