@@ -315,9 +315,8 @@ def get_mock_response_data(lang_key, customer_type):
     
     L = LANG[lang_key]
     
-    # ⭐ Mock 데이터 수정: 문의 내용과 상관없는 eSIM/루브르 박물관 등의 내용 제거 및 중립화
-    
     if lang_key == 'ko':
+        # ⭐ 수정된 중립적인 목업 데이터 템플릿
         initial_check = "고객님의 성함, 전화번호, 이메일 등 정확한 연락처 정보를 확인해 주시면 감사하겠습니다."
         tone = "공감 및 해결 중심"
         advice = "이 고객은 {customer_type} 성향이지만, 문제 해결을 간절히 원합니다. 공감과 함께, 문제 해결에 필수적인 정보를 명확하게 요청해야 합니다. 불필요한 사족을 피하고 신뢰를 주도록 하세요."
@@ -607,9 +606,9 @@ LANG = {
         "quiz_original_response": "LLM 원본 응답",
         "firestore_loading": "데이터베이스에서 RAG 인덱스 로드 중...",
         "firestore_no_index": "데이터베이스에서 기존 RAG 인덱스를 찾을 수 없습니다. 파일을 업로드하여 새로 만드세요.", 
-        "db_save_complete": "(DB 저장 완료)",
-        "data_analysis_progress": "자료 분석 및 학습 DB 구축 중...",
-        "response_generating": "답변 생성 중...",
+        "db_save_complete": "(DB 저장 완료)", # ⭐ 다국어 키 추가
+        "data_analysis_progress": "자료 분석 및 학습 DB 구축 중...", # ⭐ 다국어 키 추가
+        "response_generating": "답변 생성 중...", # ⭐ 다국어 키 추가
         "lstm_result_header": "학습 성취도 예측 결과",
         "lstm_score_metric": "현재 예측 성취도",
         "lstm_score_info": "다음 퀴즈 예상 점수는 약 **{predicted_score:.1f}점**입니다. 학습 성과를 유지하거나 개선하세요!",
@@ -650,11 +649,11 @@ LANG = {
         "new_simulation_button": "새 시뮬레이션 시작",
         "history_selectbox_label": "로드할 이력을 선택하세요:",
         "history_load_button": "선택된 이력 로드",
-        "delete_history_button": "❌ 모든 이력 삭제", # ⭐ 다국어 키 추가
-        "delete_confirm_message": "정말로 모든 상담 이력을 삭제하시겠습니까? 되돌릴 수 없습니다.", # ⭐ 다국어 키 추가
-        "delete_confirm_yes": "예, 삭제합니다", # ⭐ 다국어 키 추가
-        "delete_confirm_no": "아니오, 유지합니다", # ⭐ 다국어 키 추가
-        "delete_success": "✅ 모든 상담 이력 삭제 완료!" # ⭐ 다국어 키 추가
+        "delete_history_button": "❌ 모든 이력 삭제", 
+        "delete_confirm_message": "정말로 모든 상담 이력을 삭제하시겠습니까? 되돌릴 수 없습니다.", 
+        "delete_confirm_yes": "예, 삭제합니다", 
+        "delete_confirm_no": "아니오, 유지합니다", 
+        "delete_success": "✅ 모든 상담 이력 삭제 완료!" 
     },
     "en": {
         "title": "Personalized AI Study Coach",
@@ -745,11 +744,11 @@ LANG = {
         "new_simulation_button": "Start New Simulation",
         "history_selectbox_label": "Select history to load:",
         "history_load_button": "Load Selected History",
-        "delete_history_button": "❌ Delete All History", # ⭐ 다국어 키 추가
-        "delete_confirm_message": "Are you sure you want to delete ALL simulation history? This action cannot be undone.", # ⭐ 다국어 키 추가
-        "delete_confirm_yes": "Yes, Delete", # ⭐ 다국어 키 추가
-        "delete_confirm_no": "No, Keep", # ⭐ 다국어 키 추가
-        "delete_success": "✅ All simulation history deleted!" # ⭐ 다국어 키 추가
+        "delete_history_button": "❌ Delete All History", 
+        "delete_confirm_message": "Are you sure you want to delete ALL simulation history? This action cannot be undone.", 
+        "delete_confirm_yes": "Yes, Delete", 
+        "delete_confirm_no": "No, Keep", 
+        "delete_success": "✅ All simulation history deleted!" 
     },
     "ja": {
         "title": "パーソナライズAI学習コーチ",
@@ -836,7 +835,7 @@ LANG = {
         "agent_response_header": "✍️ エージェント応答",
         "agent_response_placeholder": "顧客に返信 (必須情報の要求/確認、または解決策の提示)",
         "send_response_button": "応答送信",
-        "request_rebuttal_button": "顧客の次の反応を要求", 
+        "request_rebuttal_button": "顧客の次の反応を要求", # ⭐ LLM 호출 텍스트 제거
         "new_simulation_button": "新しいシミュレーションを開始",
         "history_selectbox_label": "履歴を選択してロード:",
         "history_load_button": "選択された履歴をロード",
@@ -1060,6 +1059,7 @@ def delete_all_history(db):
         return
     
     try:
+        # 이터레이션을 위해 스트림 사용
         docs = db.collection("simulation_histories").stream()
         for doc in docs:
             doc.reference.delete()
@@ -1070,7 +1070,7 @@ def delete_all_history(db):
         st.session_state.initial_advice_provided = False
         st.session_state.is_chat_ended = False
         st.session_state.show_delete_confirm = False
-        st.success(L["delete_success"])
+        st.success(L["delete_success"]) # ⭐ 다국어 적용
         st.rerun()
         
     except Exception as e:
@@ -1089,6 +1089,7 @@ if feature_selection == L["simulator_tab"]:
          st.session_state.tts_js_loaded = True
 
     # 1.5 이력 삭제 버튼 및 모달
+    db = st.session_state.get('firestore_db')
     col_delete, _ = st.columns([1, 4])
     with col_delete:
         if st.button(L["delete_history_button"], key="trigger_delete_history"):
@@ -1105,7 +1106,6 @@ if feature_selection == L["simulator_tab"]:
                 st.rerun()
 
     # ⭐ Firebase 상담 이력 로드 및 선택 섹션
-    db = st.session_state.get('firestore_db')
     if db:
         with st.expander(L["history_expander_title"]): # ⭐ 다국어 적용
             histories = load_simulation_histories(db)
@@ -1206,16 +1206,16 @@ if feature_selection == L["simulator_tab"]:
             The customer sentiment is: {customer_type_display}.
             The customer's initial inquiry is: "{customer_query}"
             
-            Based on the customer's inquiry:
+            Based on this, provide:
+            1. Crucial advice on the tone and strategy for dealing with this specific sentiment. 
+            2. A concise and compassionate recommended response draft.
             
-            1. **Determine Core Topic:** Identify the main subject of the inquiry (e.g., eSIM troubleshooting, Louvre tickets, refund request, general info).
-            2. **Generate Advice & Draft:** Provide crucial advice (tone, strategy) and a compassionate recommended response draft.
-
             The recommended draft MUST be strictly in {LANG[current_lang_key]['lang_select']}.
             
             **CRITICAL RULE FOR DRAFT CONTENT:**
-            - **If the Core Topic is NOT eSIM/Technical connection issues:** The draft MUST only address the core topic (e.g., ticket price, refund process) and MUST NOT include any irrelevant technical requests (Smartphone model, Location, Last Step of troubleshooting).
-            - **If the Core Topic IS eSIM/Technical connection issues (like "won't activate" or "no connection"):** The draft MUST politely request the following **ESSENTIAL TROUBLESHOOTING INFORMATION** (Smartphone Model, Location, Last Step).
+            - **Core Topic Filtering:** Analyze the customer's inquiry to determine its main subject (e.g., eSIM issue, ticket price, refund). 
+            - **Draft Content:** The draft MUST address the core topic directly. The draft MUST ONLY request *general* information needed for ALL inquiries (like booking ID, contact info). 
+            - **Technical Info:** The draft MUST NOT include specific technical troubleshooting requests (Smartphone model, Location, Last Step of troubleshooting) **UNLESS** the core inquiry is explicitly about connection/activation failures (like "won't activate" or "no connection"). If the inquiry is about eSIM activation failure, use a standard troubleshooting request template.
             
             When the Agent subsequently asks for information, **Roleplay as the Customer** who is frustrated but **MUST BE HIGHLY COOPERATIVE** and provide the requested details piece by piece (not all at once). The customer MUST NOT argue or ask why the information is needed.
             """
