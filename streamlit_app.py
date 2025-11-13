@@ -147,7 +147,7 @@ def load_index_from_firestore(db, embeddings, index_id="user_portfolio_rag"):
         print(f"Error loading index from Firestore: {e}")
         return None
 
-# ⭐ 상담 이력 저장 함수 추가
+# ⭐ 상담 이력 저장 함수 수정 (언어 키 추가)
 def save_simulation_history(db, initial_query, customer_type, messages):
     """Firestore에 상담 이력을 저장합니다."""
     if not db: 
@@ -161,6 +161,7 @@ def save_simulation_history(db, initial_query, customer_type, messages):
         "initial_query": initial_query,
         "customer_type": customer_type,
         "messages": history_data,
+        "language_key": st.session_state.language, # ⭐ 언어 키 추가
         "timestamp": firestore.SERVER_TIMESTAMP
     }
     
@@ -172,15 +173,16 @@ def save_simulation_history(db, initial_query, customer_type, messages):
         st.sidebar.error(f"❌ 상담 이력 저장 실패: {e}")
         return False
 
-# ⭐ 상담 이력 로드 함수 추가
-def load_simulation_histories(db):
-    """Firestore에서 최근 상담 이력을 로드합니다 (최대 10개)."""
+# ⭐ 상담 이력 로드 함수 수정 (언어 필터링 추가)
+def load_simulation_histories(db, current_lang_key):
+    """Firestore에서 현재 언어에 해당하는 최근 상담 이력을 로드합니다 (최대 10개)."""
     if not db: return []
     
     try:
-        # 최근 10개 이력을 시간 순으로 정렬하여 가져옴
+        # 현재 선택된 언어 키로 필터링
         histories = (
             db.collection("simulation_histories")
+            .where("language_key", "==", current_lang_key) # ⭐ 언어 필터링 적용
             .order_by("timestamp", direction=Query.DESCENDING)
             .limit(10)
             .stream()
@@ -197,7 +199,8 @@ def load_simulation_histories(db):
 
         return results
     except Exception as e:
-        st.error(f"❌ 이력 로드 실패: {e}")
+        # st.error(f"❌ 이력 로드 실패: {e}") # 사용자에게 너무 많은 오류 메시지를 표시하지 않도록 주석 처리
+        print(f"Error loading histories: {e}")
         return []
 
 # ⭐ 이력 삭제 함수 (Firestore 연동)
@@ -668,7 +671,7 @@ LANG = {
         
         # ⭐ 대화형/종료 메시지
         "button_mic_input": "음성 입력",
-        "prompt_customer_end": "고객님의 추가 문의 사항이 없어, 이 상담 채팅을 종료하겠습니다.",
+        "prompt_customer_end": "고객님의 추가 문의 사항이 없어, 이 상담 채팅을 종료하겠습니다。",
         "prompt_survey": "고객 문의 센터에 연락 주셔서 감사드리며, 추가로 저희 응대 솔루션에 대한 설문 조사에 응해 주시면 감사하겠습니다. 추가 문의 사항이 있으시면 언제든지 연락 주십시오。",
         "customer_closing_confirm": "또 다른 문의 사항은 없으신가요?",
         "customer_positive_response": "좋은 말씀/친절한 상담 감사드립니다。",
@@ -680,15 +683,15 @@ LANG = {
         "new_simulation_button": "새 시뮬레이션 시작",
         "history_selectbox_label": "로드할 이력을 선택하세요:",
         "history_load_button": "선택된 이력 로드",
-        "delete_history_button": "❌ 모든 이력 삭제", # ⭐ 다국어 키 추가
-        "delete_confirm_message": "정말로 모든 상담 이력을 삭제하시겠습니까? 되돌릴 수 없습니다.", # ⭐ 다국어 키 추가
-        "delete_confirm_yes": "예, 삭제합니다", # ⭐ 다국어 키 추가
-        "delete_confirm_no": "아니오, 유지합니다", # ⭐ 다국어 키 추가
-        "delete_success": "✅ 모든 상담 이력 삭제 완료!", # ⭐ 다국어 키 추가
-        "deleting_history_progress": "이력 삭제 중...", # ⭐ 다국어 키 추가
-        "search_history_label": "이력 키워드 검색", # ⭐ 다국어 키 추가
-        "date_range_label": "날짜 범위 필터", # ⭐ 다국어 키 추가
-        "no_history_found": "검색 조건에 맞는 이력이 없습니다。" # ⭐ 다국어 키 추가
+        "delete_history_button": "❌ 모든 이력 삭제", 
+        "delete_confirm_message": "정말로 모든 상담 이력을 삭제하시겠습니까? 되돌릴 수 없습니다。", 
+        "delete_confirm_yes": "예, 삭제합니다", 
+        "delete_confirm_no": "아니오, 유지합니다", 
+        "delete_success": "✅ 모든 상담 이력 삭제 완료!",
+        "deleting_history_progress": "이력 삭제 중...", 
+        "search_history_label": "이력 키워드 검색", 
+        "date_range_label": "날짜 범위 필터", 
+        "no_history_found": "검색 조건에 맞는 이력이 없습니다。" 
     },
     "en": {
         "title": "Personalized AI Study Coach",
@@ -872,21 +875,12 @@ LANG = {
         "customer_positive_response": "親切なご対応ありがとうございました。",
         "button_end_chat": "対応終了 (アンケートを依頼)",
         "agent_response_header": "✍️ エージェント応答",
-        "agent_response_placeholder": "顧客に返信 (必須情報の要求/確認、または解決策の提示)",
+        "agent_response_placeholder": "顧客に返信 (必須情報の要求/확인、または解決策の提示)",
         "send_response_button": "応答送信",
         "request_rebuttal_button": "顧客の次の反応を要求", 
         "new_simulation_button": "新しいシミュレーションを開始",
         "history_selectbox_label": "履歴を選択してロード:",
-        "history_load_button": "選択された履歴をロード",
-        "delete_history_button": "❌ 全履歴を削除", # ⭐ 다국어 키 추가
-        "delete_confirm_message": "本当にすべてのシミュレーション履歴を削除してもよろしいですか？この操作は元に戻せません。", # ⭐ 다국어 키 추가
-        "delete_confirm_yes": "はい、削除します", # ⭐ 다국어 키 추가
-        "delete_confirm_no": "いいえ、維持します", # ⭐ 다국어 키 추가
-        "delete_success": "✅ 削除が完了されました!", # ⭐ 다국어 키 추가
-        "deleting_history_progress": "履歴削除中...", # ⭐ 다국어 키 추가
-        "search_history_label": "キーワード検索", # ⭐ 수정된 일본어 키 추가
-        "date_range_label": "日付範囲フィルター", # ⭐ 수정된 일본어 키 추가
-        "no_history_found": "検索条件に一致する履歴はありません。" # ⭐ 다국어 키 추가
+        "history_load_button": "選択された履歴をロード"
     }
 }
 
@@ -1118,8 +1112,7 @@ if feature_selection == L["simulator_tab"]:
             st.warning(L["delete_confirm_message"])
             col_yes, col_no = st.columns(2)
             if col_yes.button(L["delete_confirm_yes"], key="confirm_delete_yes", type="primary"):
-                with st.spinner(L["deleting_history_progress"]): # ⭐ 삭제 로딩 스피너 추가
-                    delete_all_history(db)
+                delete_all_history(db)
             if col_no.button(L["delete_confirm_no"], key="confirm_delete_no"):
                 st.session_state.show_delete_confirm = False
                 st.rerun()
@@ -1129,47 +1122,54 @@ if feature_selection == L["simulator_tab"]:
         with st.expander(L["history_expander_title"]): # ⭐ 다국어 적용
             
             # 2. 이력 검색 및 필터링 기능 추가
-            histories = load_simulation_histories(db)
+            # load_simulation_histories에 현재 언어 키 전달 (언어별 데이터 분리)
+            histories = load_simulation_histories(db, st.session_state.language) 
             
             # 2-1. 검색 필터
-            search_query = st.text_input(L.get("search_history_label", "이력 키워드 검색"), key="history_search")
+            col1, col2 = st.columns(2)
+            with col1:
+                search_query = st.text_input(L["search_history_label"], key="history_search")
             
-            # 2-2. 날짜 필터 (최근 7일 범위로 설정)
+            # 2-2. 고객 성향 필터
+            all_customer_types = list(set([h['customer_type'] for h in histories]))
+            customer_type_filter_options = [L.get("all_label", "모두")] + L["customer_type_options"] 
+
+            with col2:
+                selected_type_filter = st.selectbox(
+                    L["customer_type_label"] + L.get("filter_suffix", " (필터)"),
+                    options=customer_type_filter_options,
+                    key="customer_type_filter"
+                )
+            
+            # 2-3. 날짜 필터 (st.date_input은 브라우저 로케일을 사용하므로 요일/월은 그대로 두고, 날짜만 사용)
             today = datetime.now().date()
             default_start_date = today - timedelta(days=7)
             
-            # st.date_input은 날짜가 선택되지 않았을 때 (None)을 반환할 수 있으므로, 처리 로직을 개선
             date_range_input = st.date_input(
-                L.get("date_range_label", "날짜 범위 필터"), 
+                L["date_range_label"], 
                 value=[default_start_date, today],
                 key="history_date_range"
             )
-            
-            # st.selectbox를 위해 고객 유형 옵션 리스트 정의 (이력에 저장된 것 기준)
-            all_customer_types = list(set([h['customer_type'] for h in histories]))
-            customer_type_filter_options = ["모두" if st.session_state.language == 'ko' else "All"] + all_customer_types
-            selected_type_filter = st.selectbox(
-                L["customer_type_label"] + L.get("filter_suffix", " (필터)"), # ⭐ 필터링 UI 레이블 추가
-                options=customer_type_filter_options,
-                key="customer_type_filter"
-            )
 
-            # 필터링 로직
+            # --- 필터링 로직 ---
             filtered_histories = []
             if histories:
                 if isinstance(date_range_input, list) and len(date_range_input) == 2:
                     start_date = min(date_range_input)
                     end_date = max(date_range_input) + timedelta(days=1)
                 else:
+                    # 유효하지 않은 날짜 범위 입력 시 필터링하지 않음
                     start_date = datetime.min.date()
                     end_date = datetime.max.date()
                     
                 for h in histories:
-                    # 텍스트 검색 (initial_query, customer_type)
+                    # 텍스트 검색 (initial_query, messages content)
                     search_match = True
                     if search_query:
                         query_lower = search_query.lower()
-                        if query_lower not in h['initial_query'].lower() and query_lower not in h['customer_type'].lower():
+                        # initial_query와 messages의 content를 모두 검색 대상으로 포함
+                        searchable_text = h['initial_query'].lower() + " ".join([m['content'].lower() for m in h['messages']])
+                        if query_lower not in searchable_text:
                             search_match = False
                     
                     # 날짜 필터
@@ -1181,7 +1181,7 @@ if feature_selection == L["simulator_tab"]:
                     
                     # 고객 유형 필터
                     type_match = True
-                    if selected_type_filter not in ["모두", "All"]:
+                    if selected_type_filter not in [L.get("all_label", "모두")]:
                         if h['customer_type'] != selected_type_filter:
                             type_match = False
                             
@@ -1191,7 +1191,7 @@ if feature_selection == L["simulator_tab"]:
             
             if filtered_histories:
                 history_options = {
-                    f"[{h['timestamp'].strftime('%m-%d %H:%M')}] {h['customer_type']} - {h['initial_query'][:30]}...": h
+                    f"[{h['timestamp'].strftime('%Y-%m-%d %H:%M')}] {h['customer_type']} - {h['initial_query'][:30]}...": h
                     for h in filtered_histories
                 }
                 
@@ -1362,7 +1362,7 @@ if feature_selection == L["simulator_tab"]:
                  with st.chat_message("assistant", avatar="✨"):
                     st.markdown(message["content"])
 
-        # 6. 대화형 시뮬레이션 진행 (추가 채팅)
+            # 6. 대화형 시뮬레이션 진행 (추가 채팅)
         if st.session_state.initial_advice_provided and not st.session_state.is_chat_ended:
             
             last_role = st.session_state.simulator_messages[-1]['role'] if st.session_state.simulator_messages else None
@@ -1373,34 +1373,32 @@ if feature_selection == L["simulator_tab"]:
                 st.markdown(f"### {L['agent_response_header']}") 
                 
                 # HTML과 JavaScript를 사용하여 Enter 키 전송 로직 삽입
-                js_code_for_enter = """
+                js_code_for_enter = f"""
                 <script>
-                function setupEnterSend() {
-                    const textarea = document.querySelector('textarea[key="agent_response_area_text"]');
-                    const button = document.querySelector('button[key="send_agent_response"]');
-                    
-                    if (textarea && button) {
-                        textarea.addEventListener('keydown', function(event) {
-                            // Shift + Enter 또는 Ctrl + Enter는 줄바꿈
-                            if (event.key === 'Enter' && (event.shiftKey || event.ctrlKey)) {
-                                // 브라우저의 기본 줄바꿈 동작 허용
-                            } 
-                            // Enter만 눌렀을 때 전송
-                            else if (event.key === 'Enter') {
-                                event.preventDefault(); // 기본 Enter 동작(줄바꿈) 방지
-                                button.click();
-                            }
-                        });
-                    }
-                }
+                // st.text_area의 키가 'agent_response_area_text'인 요소를 찾습니다.
+                const textarea = document.querySelector('textarea[key="agent_response_area_text"]');
+                const button = document.querySelector('button[key="send_agent_response"]');
                 
-                // 페이지 로드 시 및 Streamlit 재실행 시 셋업
-                setTimeout(setupEnterSend, 100); 
+                if (textarea && button) {{
+                    textarea.addEventListener('keydown', function(event) {{
+                        // Shift + Enter 또는 Ctrl + Enter는 줄바꿈
+                        if (event.key === 'Enter' && (event.shiftKey || event.ctrlKey)) {{
+                            // 기본 동작(줄바꿈) 허용
+                        }} 
+                        // Enter만 눌렀을 때 전송
+                        else if (event.key === 'Enter') {{
+                            event.preventDefault(); // 기본 Enter 동작(줄바꿈) 방지
+                            button.click();
+                        }}
+                    }});
+                }}
                 </script>
                 """
                 
+                # Streamlit에 JavaScript 삽입
                 st.components.v1.html(js_code_for_enter, height=0, width=0)
                 
+                # st.text_area를 사용하여 명시적인 입력 필드를 제공
                 agent_response = st.text_area(
                     L["agent_response_placeholder"], 
                     value="",
