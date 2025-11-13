@@ -40,6 +40,7 @@ from langchain.prompts import PromptTemplate # ⭐ PromptTemplate 임포트
 def _get_admin_credentials():
     """Secrets에서 서비스 계정 정보를 안전하게 로드하고 딕셔너리로 반환합니다."""
     # Secrets 키를 'FIREBASE_SERVICE_ACCOUNT_JSON'으로 표준화
+    FIREBASE_SECRET_KEY = "FIREBASE_SERVICE_ACCOUNT_JSON"
     if "FIREBASE_SERVICE_ACCOUNT_JSON" not in st.secrets:
         return None, "FIREBASE_SERVICE_ACCOUNT_JSON Secret이 누락되었습니다."
     
