@@ -261,12 +261,12 @@ def synthesize_and_play_audio(current_lang_key):
         
         // 이벤트 핸들러 설정
         utterance.onstart = () => {{
-            statusElement.innerText = '{LANG[current_lang_key].get("tts_status_generating", "오디오 생성 중...")}';
+            statusElement.innerText = '{LANG[current_lang_key].get("tts_status_generating", "オーディオ生成中...")}';
             statusElement.style.backgroundColor = '#fff3e0';
         }};
         
         utterance.onend = () => {{
-            statusElement.innerText = '{LANG[current_lang_key].get("tts_status_success", "✅ 오디오 재생 완료!")}';
+            statusElement.innerText = '{LANG[current_lang_key].get("tts_status_success", "✅ オーディオ再生完了!")}';
             statusElement.style.backgroundColor = '#e8f5e9';
              setTimeout(() => {{ 
                  statusElement.innerText = getReadyText(langKey);
@@ -275,7 +275,7 @@ def synthesize_and_play_audio(current_lang_key):
         }};
         
         utterance.onerror = (event) => {{
-            statusElement.innerText = '{LANG[current_lang_key].get("tts_status_error", "❌ TTS 오류 발생")}';
+            statusElement.innerText = '{LANG[current_lang_key].get("tts_status_error", "❌ TTSエラー発生")}';
             statusElement.style.backgroundColor = '#ffebee';
             console.error("SpeechSynthesis Error:", event);
              setTimeout(() => {{ 
@@ -285,7 +285,7 @@ def synthesize_and_play_audio(current_lang_key):
         }};
 
         window.speechSynthesis.cancel(); // Stop any current speech
-        setVoiceAndSpeak(); // 재생 시작
+        setVoiceAndSpeak(); // 再生開始
 
     }};
     </script>
@@ -649,15 +649,15 @@ LANG = {
         "new_simulation_button": "새 시뮬레이션 시작",
         "history_selectbox_label": "로드할 이력을 선택하세요:",
         "history_load_button": "선택된 이력 로드",
-        "delete_history_button": "❌ 모든 이력 삭제", 
-        "delete_confirm_message": "정말로 모든 상담 이력을 삭제하시겠습니까? 되돌릴 수 없습니다。", 
-        "delete_confirm_yes": "예, 삭제합니다", 
-        "delete_confirm_no": "아니오, 유지합니다", 
-        "delete_success": "✅ 모든 상담 이력 삭제 완료!",
-        "deleting_history_progress": "이력 삭제 중...", 
-        "search_history_label": "이력 키워드 검색", 
-        "date_range_label": "날짜 범위 필터", 
-        "no_history_found": "검색 조건에 맞는 이력이 없습니다。" 
+        "delete_history_button": "❌ 모든 이력 삭제", # ⭐ 다국어 키 추가
+        "delete_confirm_message": "정말로 모든 상담 이력을 삭제하시겠습니까? 되돌릴 수 없습니다。", # ⭐ 다국어 키 추가
+        "delete_confirm_yes": "예, 삭제합니다", # ⭐ 다국어 키 추가
+        "delete_confirm_no": "아니오, 유지합니다", # ⭐ 다국어 키 추가
+        "delete_success": "✅ 모든 상담 이력 삭제 완료!", # ⭐ 다국어 키 추가
+        "deleting_history_progress": "이력 삭제 중...", # ⭐ 다국어 키 추가
+        "search_history_label": "이력 키워드 검색", # ⭐ 다국어 키 추가
+        "date_range_label": "날짜 범위 필터", # ⭐ 다국어 키 추가
+        "no_history_found": "검색 조건에 맞는 이력이 없습니다。" # ⭐ 다국어 키 추가
     },
     "en": {
         "title": "Personalized AI Study Coach",
@@ -748,17 +748,17 @@ LANG = {
         "new_simulation_button": "Start New Simulation",
         "history_selectbox_label": "Select history to load:",
         "history_load_button": "Load Selected History",
-        "delete_history_button": "❌ Delete All History", 
-        "delete_confirm_message": "Are you sure you want to delete ALL simulation history? This action cannot be undone.", 
-        "delete_confirm_yes": "Yes, Delete", 
-        "delete_confirm_no": "No, Keep", 
-        "delete_success": "✅ All simulation history deleted!" 
+        "delete_history_button": "❌ Delete All History", # ⭐ 다국어 키 추가
+        "delete_confirm_message": "Are you sure you want to delete ALL simulation history? This action cannot be undone.", # ⭐ 다국어 키 추가
+        "delete_confirm_yes": "Yes, Delete", # ⭐ 다국어 키 추가
+        "delete_confirm_no": "No, Keep", # ⭐ 다국어 키 추가
+        "delete_success": "✅ Successfully deleted!" # ⭐ 다국어 키 추가
     },
     "ja": {
         "title": "パーソナライズAI学習コーチ",
         "sidebar_title": "📚 AI学習コーチ設定",
         "file_uploader": "学習資料をアップロード (PDF, TXT, HTML)",
-        "button_start_analysis": "Start Analysis (RAG Indexing)",
+        "button_start_analysis": "資料分析開始 (RAGインデックス作成)",
         "rag_tab": "RAG知識チャットボット",
         "content_tab": "カスタムコンテンツ生成",
         "lstm_tab": "LSTM達成度予測ダッシュボード",
