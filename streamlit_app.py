@@ -221,9 +221,6 @@ def synthesize_and_play_audio(current_lang_key):
     en_ready = "Ready to listen"
     ja_ready = "音声再生の準備ができました"
 
-    # LANG 딕셔너리의 값을 직접 참조하는 대신, 런타임에 변환될 수 있도록 f-string 내에 포함
-    # 단, JS 코드 내에서 Python 변수에 직접 접근할 때는 문자열로 처리해야 함 (이미 처리됨)
-
     tts_js_code = f"""
     <script>
     if (!window.speechSynthesis) {{
@@ -240,7 +237,7 @@ def synthesize_and_play_audio(current_lang_key):
         const langCode = {{ "ko": "ko-KR", "en": "en-US", "ja": "ja-JP" }}[langKey] || "en-US";
         utterance.lang = langCode; 
 
-        // 동적으로 준비 상태 메시지 설정 (하드코딩된 값 사용)
+        // 동적으로 준비 상태 메시지 설정 (L 딕셔너리 값을 직접 사용)
         const getReadyText = (key) => {{
             if (key === 'ko') return '{ko_ready}';
             if (key === 'en') return '{en_ready}';
@@ -329,7 +326,7 @@ def get_mock_response_data(lang_key, customer_type):
 > 처리되는 대로 오늘 오후 [시간]까지 고객님께 개별적으로 연락드리겠습니다.
 """
     elif lang_key == 'en':
-        initial_check = "Could you please confirm your accurate contact details, such as your full name, phone number, and email address?"
+        initial_check = "Could you please confirm your accurate contact details, suchs your full name, phone number, and email address?"
         tone = "Empathy and Calming Tone"
         advice = "This customer is highly dissatisfied. You must apologize sincerely, explain the status transparently, and provide concrete next steps to solve the problem within policy boundaries. Avoid making hasty promises."
         draft = f"""
@@ -455,6 +452,14 @@ def load_or_train_lstm():
     model.fit(X, Y, epochs=10, batch_size=1, verbose=0)
     return model, data
 
+def force_rerun_lstm():
+    """캐시된 LSTM 모델을 무효화하고 새로 실행합니다."""
+    # st.cache_resource 함수의 캐시를 직접 지울 수 없으므로, 
+    # Streamlit의 재실행 메커니즘을 사용하여 load_or_train_lstm이
+    # time.time() 시드로 새 결과를 생성하도록 유도합니다.
+    st.session_state.lstm_rerun_trigger = time.time()
+    st.rerun()
+
 
 def clean_and_load_json(text):
     """LLM 응답 텍스트에서 JSON 객체만 정규표현식으로 추출하여 로드"""
@@ -536,260 +541,6 @@ def render_interactive_quiz(quiz_data, current_lang):
                 st.session_state.quiz_submitted = False
                 st.rerun()
 
-def synthesize_and_play_audio(current_lang_key):
-    """TTS API 대신 Web Speech API를 위한 JS 유틸리티를 Streamlit에 삽입합니다."""
-    
-    # 템플릿 리터럴 내부에서 L 딕셔너리를 직접 참조할 수 없으므로, 하드코딩된 값 사용
-    ko_ready = "음성으로 듣기 준비됨"
-    en_ready = "Ready to listen"
-    ja_ready = "音声再生の準備ができました"
-
-    tts_js_code = f"""
-    <script>
-    if (!window.speechSynthesis) {{
-        document.getElementById('tts_status').innerText = '❌ TTS Not Supported';
-    }}
-
-    window.speakText = function(text, langKey) {{
-        if (!window.speechSynthesis || !text) return;
-
-        const statusElement = document.getElementById('tts_status');
-        const utterance = new SpeechSynthesisUtterance(text);
-        
-        // 동적으로 언어 코드 설정
-        const langCode = {{ "ko": "ko-KR", "en": "en-US", "ja": "ja-JP" }}[langKey] || "en-US";
-        utterance.lang = langCode; 
-
-        // 동적으로 준비 상태 메시지 설정 (L 딕셔너리 값을 직접 사용)
-        const getReadyText = (key) => {{
-            if (key === 'ko') return '{ko_ready}';
-            if (key === 'en') return '{en_ready}';
-            if (key === 'ja') return '{ja_ready}';
-            return '{en_ready}';
-        }};
-
-        let voicesLoaded = false;
-        const setVoiceAndSpeak = () => {{
-            const voices = window.speechSynthesis.getVoices();
-            if (voices.length > 0) {{
-                // 현재 언어 코드와 일치하는 음성을 찾거나, 첫 번째 음성을 사용
-                utterance.voice = voices.find(v => v.lang.startsWith(langCode.substring(0, 2))) || voices[0];
-                voicesLoaded = true;
-                window.speechSynthesis.speak(utterance);
-            }} else if (!voicesLoaded) {{
-                // 음성이 아직 로드되지 않은 경우, 잠시 후 재시도 (비동기 로드 문제 해결)
-                setTimeout(setVoiceAndSpeak, 100);
-            }}
-        }};
-        
-        // 이벤트 핸들러 설정
-        utterance.onstart = () => {{
-            statusElement.innerText = '{LANG[current_lang_key].get("tts_status_generating", "오디오 생성 중...")}';
-            statusElement.style.backgroundColor = '#fff3e0';
-        }};
-        
-        utterance.onend = () => {{
-            statusElement.innerText = '{LANG[current_lang_key].get("tts_status_success", "✅ 오디오 재생 완료!")}';
-            statusElement.style.backgroundColor = '#e8f5e9';
-             setTimeout(() => {{ 
-                 statusElement.innerText = getReadyText(langKey);
-                 statusElement.style.backgroundColor = '#f0f0f0';
-             }}, 3000);
-        }};
-        
-        utterance.onerror = (event) => {{
-            statusElement.innerText = '{LANG[current_lang_key].get("tts_status_error", "❌ TTS 오류 발생")}';
-            statusElement.style.backgroundColor = '#ffebee';
-            console.error("SpeechSynthesis Error:", event);
-             setTimeout(() => {{ 
-                 statusElement.innerText = getReadyText(langKey);
-                 statusElement.style.backgroundColor = '#f0f0f0';
-             }}, 3999);
-        }};
-
-        window.speechSynthesis.cancel(); // Stop any current speech
-        setVoiceAndSpeak(); // 재생 시작
-
-    }};
-    </script>
-    """
-    # JS 유틸리티를 Streamlit 앱에 컴포넌트로 삽입 (높이 조정하여 상태창만 보이도록)
-    st.components.v1.html(tts_js_code, height=5, width=0)
-
-def render_tts_button(text_to_speak, current_lang_key):
-    """TTS 버튼 UI를 렌더링하고 클릭 시 JS 함수를 호출합니다."""
-    
-    # 줄 바꿈을 공백으로 변환하고, 따옴표를 이스케이프 처리
-    safe_text = text_to_speak.replace('\n', ' ').replace('"', '\\"').replace("'", "\\'")
-    
-    # ⭐ JS 함수에 언어 키도 함께 전달
-    js_call = f"window.speakText('{safe_text}', '{current_lang_key}')"
-
-    st.markdown(f"""
-        <button onclick="{js_call}"
-                style="background-color: #4338CA; color: white; padding: 10px 20px; border-radius: 5px; cursor: pointer; border: none; width: 100%; font-weight: bold; margin-bottom: 10px;">
-            {LANG[current_lang_key].get("button_listen_audio", "음성으로 듣기")} 🎧
-        </button>
-    """, unsafe_allow_html=True)
-
-
-def get_mock_response_data(lang_key, customer_type):
-    """API Key가 없을 때 사용할 가상 응대 데이터 (다국어 지원)"""
-    
-    if lang_key == 'ko':
-        initial_check = "고객님의 성함, 전화번호, 이메일 등 정확한 연락처 정보를 확인해 주시면 감사하겠습니다."
-        tone = "공감 및 진정"
-        advice = "이 고객은 매우 까다로운 성향이므로, 감정에 공감하면서도 정해진 정책 내에서 해결책을 단계적으로 제시해야 합니다. 성급한 확답은 피하세요."
-        draft = f"""
-{initial_check}
-
-> 고객님, 먼저 주문하신 상품 배송이 늦어져 많이 불편하셨을 점 진심으로 사과드립니다. 고객님의 상황을 충분히 이해하고 있습니다.
-> 현재 시스템 상 확인된 바로는 [배송 지연 사유 설명]. 
-> 이 문제를 해결하기 위해, 저희가 [구체적인 해결책 1: 예: 담당 팀에 직접 연락] 및 [구체적인 해결책 2: 예: 오늘 중으로 상태 업데이트 재확인]을 진행하겠습니다.
-> 처리되는 대로 오늘 오후 [시간]까지 고객님께 개별적으로 연락드리겠습니다.
-"""
-    elif lang_key == 'en':
-        initial_check = "Could you please confirm your accurate contact details, such as your full name, phone number, and email address?"
-        tone = "Empathy and Calming Tone"
-        advice = "This customer is highly dissatisfied. You must apologize sincerely, explain the status transparently, and provide concrete next steps to solve the problem within policy boundaries. Avoid making hasty promises."
-        draft = f"""
-{initial_check}
-
-> Dear Customer, I sincerely apologize for the inconvenience caused by the delay in delivering your order. I completely understand your frustration.
-> Our system indicates [Reason for delay]. 
-> To resolve this, we will proceed with [Specific Solution 1: e.g., contacting the dedicated team immediately] and [Specific Solution 2: e.g., re-confirming the status update by end of day].
-> We will contact you personally by [Time] this afternoon with an update.
-"""
-    elif lang_key == 'ja':
-        initial_check = "お客様の氏名、お電話番号、Eメールアドレスなど、正確な連絡先情報を確認させていただけますでしょうか。"
-        tone = "共感と鎮静トーン"
-        advice = "このお客様は非常に難しい傾向にあるため、感情に共感しつつも、定められたポリシー内で解決策を段階的に提示する必要があります。安易な確約は避けてください。"
-        draft = f"""
-{initial_check}
-
-> お客様、ご注文商品の配送が遅れてしまい、大変ご迷惑をおかけしておりますことを心よりお詫び申し上げます。お客様のお気持ち、十分理解しております。
-> 現在システムで確認したところ、[遅延の理由を説明]。
-> この問題を解決するため、弊社にて[具体的な解決策1：例：担当チームに直接連絡]および[具体的な解決策2：例：本日中に再度状況を確認]をいたします。
-> 進捗があり次第、本日午後[時間]までに個別にご連絡差し上げます。
-"""
-    
-    return {
-        "advice_header": f"{LANG[lang_key]['simulation_advice_header']}",
-        "advice": advice,
-        "draft_header": f"{LANG[lang_key]['simulation_draft_header']} ({tone})",
-        "draft": draft
-    }
-
-def get_closing_messages(lang_key):
-    """고객 응대 종료 시 사용하는 다국어 메시지 딕셔너리를 반환합니다."""
-    
-    if lang_key == 'ko':
-        return {
-            "additional_query": "또 다른 문의 사항은 없으신가요?",
-            "chat_closing": "고객님의 추가 문의 사항이 없어, 이 상담 채팅을 종료하겠습니다. 고객 문의 센터에 연락 주셔서 감사드리며, 추가로 저희 응대 솔루션에 대한 설문 조사에 응해 주시면 감사하겠습니다. 추가 문의 사항이 있으시면 언제든지 연락 주십시오."
-        }
-    elif lang_key == 'en':
-        return {
-            "additional_query": "Is there anything else we can assist you with today?",
-            "chat_closing": "As there are no further inquiries, we will now end this chat session. Thank you for contacting our Customer Support Center. We would be grateful if you could participate in a short survey about our service solution. Please feel free to contact us anytime if you have any additional questions."
-        }
-    elif lang_key == 'ja':
-        return {
-            "additional_query": "また、お客様にお手伝いさせて頂けるお問い合わせは御座いませんか？",
-            "chat_closing": "お客様からの追加のお問い合わせがないため、本チャットサポートを終了させていただきます。お問い合わせいただき、誠にありがとうございました。弊社の対応ソリューションに関する簡単なアンケートにご協力いただければ幸いです。追加のご質問がございましたらいつでもご連絡ください。"
-        }
-    return get_closing_messages('ko') # 기본값
-
-
-def get_document_chunks(files):
-    """업로드된 파일에서 텍스트를 로드하고 청킹합니다."""
-    documents = []
-    temp_dir = tempfile.mkdtemp()
-    for uploaded_file in files:
-        temp_filepath = os.path.join(temp_dir, uploaded_file.name)
-        file_extension = uploaded_file.name.split('.')[-1].lower()
-        if file_extension == "pdf":
-            with open(temp_filepath, "wb") as f: f.write(uploaded_file.getvalue())
-            loader = PyPDFLoader(temp_filepath)
-            documents.extend(loader.load())
-        elif file_extension == "html":
-            raw_html = uploaded_file.getvalue().decode('utf-8')
-            soup = BeautifulSoup(raw_html, 'html.parser')
-            text_content = soup.get_text(separator=' ', strip=True)
-            documents.append(Document(page_content=text_content, metadata={"source": uploaded_file.name}))
-        elif file_extension == "txt":
-            with open(temp_filepath, "wb") as f: f.write(uploaded_file.getvalue())
-            loader = TextLoader(temp_filepath, encoding="utf-8")
-            documents.extend(loader.load())
-        else:
-            print(f"File '{uploaded_file.name}' not supported.")
-            continue
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-    return text_splitter.split_documents(documents)
-
-def get_vector_store(text_chunks):
-    """텍스트 청크를 임베딩하고 Vector Store를 생성합니다."""
-    cache_key = tuple(doc.page_content for doc in text_chunks)
-    if cache_key in st.session_state.embedding_cache: return st.session_state.embedding_cache[cache_key]
-    if not st.session_state.is_llm_ready: return None
-    try:
-        vector_store = FAISS.from_documents(text_chunks, embedding=st.session_state.embeddings)
-        st.session_state.embedding_cache[cache_key] = vector_store
-        return vector_store
-    except Exception as e:
-        if "429" in str(e): return None
-        else:
-            print(f"Vector Store creation failed: {e}") 
-            return None
-
-def get_rag_chain(vector_store):
-    """검색 체인(ConversationalRetrievalChain)을 생성합니다."""
-    if vector_store is None: return None
-    # ⭐ RAG 체인에 memory_key를 명시적으로 전달
-    return ConversationalRetrievalChain.from_llm(
-        llm=st.session_state.llm,
-        retriever=vector_store.as_retriever(),
-        memory=st.session_state.memory
-    )
-
-
-# ================================
-# LSTM 함수 수정: 캐시를 무효화하는 새로운 함수를 추가하고, 기존 함수는 time.time()을 시드로 사용
-# ================================
-@st.cache_resource
-def load_or_train_lstm():
-    """가상의 학습 성취도 예측을 위한 LSTM 모델을 생성하고 학습합니다.
-       (주의: time.time()을 시드로 사용하여 호출될 때마다 다른 랜덤 결과를 생성하도록 설정)
-    """
-    # ⭐ 시드에 현재 시간을 사용하여 호출 시마다 다른 랜덤 결과를 생성하도록 함 (캐시 유지 상태에서 결과 변경 유도)
-    np.random.seed(int(time.time())) 
-    data = np.cumsum(np.random.normal(loc=5, scale=5, size=50)) + 60
-    data = np.clip(data, 50, 95)
-    def create_dataset(dataset, look_back=3):
-        X, Y = [], []
-        for i in range(len(dataset) - look_back):
-            X.append(dataset[i:(i + look_back)])
-            Y.append(dataset[i + look_back])
-        return np.array(X), np.array(Y)
-    look_back = 5
-    X, Y = create_dataset(data, look_back)
-    X = np.reshape(X, (X.shape[0], X.shape[1], 1))
-    model = Sequential([
-        LSTM(50, activation='relu', input_shape=(look_back, 1)),
-        Dense(1)
-    ])
-    model.compile(optimizer='adam', loss='mse')
-    model.fit(X, Y, epochs=10, batch_size=1, verbose=0)
-    return model, data
-
-def force_rerun_lstm():
-    """캐시된 LSTM 모델을 무효화하고 새로 실행합니다."""
-    # st.cache_resource 함수의 캐시를 직접 지울 수 없으므로, 
-    # Streamlit의 재실행 메커니즘을 사용하여 load_or_train_lstm이
-    # time.time() 시드로 새 결과를 생성하도록 유도합니다.
-    st.session_state.lstm_rerun_trigger = time.time()
-    st.rerun()
-
 # ================================
 # 3. 다국어 지원 딕셔너리 (Language Dictionary)
 # ================================
@@ -839,6 +590,7 @@ LANG = {
         "quiz_error_llm": "퀴즈 생성 실패: LLM이 올바른 JSON 형식을 반환하지 않았습니다. LLM 응답 원본을 확인하세요。",
         "quiz_original_response": "LLM 원본 응답",
         "firestore_loading": "데이터베이스에서 RAG 인덱스 로드 중...",
+        "firestore_no_index": "데이터베이스에서 기존 RAG 인덱스를 찾을 수 없습니다. 파일을 업로드하여 새로 만드세요.", 
         "lstm_result_header": "학습 성취도 예측 결과",
         "lstm_score_metric": "현재 예측 성취도",
         "lstm_score_info": "다음 퀴즈 예상 점수는 약 **{predicted_score:.1f}점**입니다. 학습 성과를 유지하거나 개선하세요!",
@@ -862,6 +614,8 @@ LANG = {
         "tts_status_success": "✅ 오디오 재생 완료!",
         "tts_status_fail": "❌ TTS 생성 실패 (데이터 없음)",
         "tts_status_error": "❌ TTS 오류 발생",
+        "history_expander_title": "📝 이전 상담 이력 로드 (최근 10개)", 
+        "initial_query_sample": "프랑스 파리에 도착했는데, 클룩에서 구매한 eSIM이 활성화가 안 됩니다. 연결이 안 돼서 너무 곤란합니다. 어떻게 해야 하나요?", 
         
         # ⭐ 대화형/종료 메시지
         "button_mic_input": "음성 입력",
@@ -873,7 +627,7 @@ LANG = {
         "agent_response_header": "✍️ 에이전트 응답",
         "agent_response_placeholder": "고객에게 응답하세요 (고객의 필수 정보를 요청/확인하거나, 문제 해결책을 제시하세요)",
         "send_response_button": "응답 전송",
-        "request_rebuttal_button": "고객의 다음 반응 요청 (LLM 호출)",
+        "request_rebuttal_button": "고객의 다음 반응 요청", # ⭐ LLM 호출 텍스트 제거
         "new_simulation_button": "새 시뮬레이션 시작",
         "history_selectbox_label": "로드할 이력을 선택하세요:",
         "history_load_button": "선택된 이력 로드"
@@ -923,6 +677,7 @@ LANG = {
         "quiz_error_llm": "Quiz generation failed: LLM did not return a valid JSON format. Check the original LLM response.",
         "quiz_original_response": "Original LLM Response",
         "firestore_loading": "Loading RAG index from database...",
+        "firestore_no_index": "Could not find existing RAG index in database. Please upload files and create a new one.", 
         "lstm_result_header": "Prediction Results",
         "lstm_score_metric": "Current Predicted Achievement",
         "lstm_score_info": "Your next estimated quiz score is **{predicted_score:.1f}**. Maintain or improve your learning progress!",
@@ -946,6 +701,8 @@ LANG = {
         "tts_status_success": "✅ Audio playback complete!",
         "tts_status_fail": "❌ TTS generation failed (No data)",
         "tts_status_error": "❌ TTS API error occurred",
+        "history_expander_title": "📝 Load Previous Simulation History (Last 10)", 
+        "initial_query_sample": "I arrived in Paris, France, but the eSIM I bought from Klook won't activate. I'm really struggling to get connected. What should I do?", 
 
         # ⭐ 대화형/종료 메시지
         "button_mic_input": "Voice Input",
@@ -957,7 +714,7 @@ LANG = {
         "agent_response_header": "✍️ Agent Response",
         "agent_response_placeholder": "Respond to the customer (Request/confirm essential information or provide solution steps)",
         "send_response_button": "Send Response",
-        "request_rebuttal_button": "Request Customer's Next Reaction (LLM Call)",
+        "request_rebuttal_button": "Request Customer's Next Reaction", # ⭐ LLM 호출 텍스트 제거
         "new_simulation_button": "Start New Simulation",
         "history_selectbox_label": "Select history to load:",
         "history_load_button": "Load Selected History"
@@ -1007,6 +764,7 @@ LANG = {
         "quiz_error_llm": "LLMが正しいJSONの形式を読み取れませんでしたので、クイズの生成が失敗しました。",
         "quiz_original_response": "LLM 原本応答",
         "firestore_loading": "データベースからRAGインデックスをロード中...",
+        "firestore_no_index": "データベースで既存のRAGインデックスが見つかりません。ファイルをアップロードして新しく作成してください。", 
         "lstm_result_header": "達成度予測結果",
         "lstm_score_metric": "現在の予測達成度",
         "lstm_score_info": "次のクイズの推定スコアは約 **{predicted_score:.1f}点**です。学習の成果を維持または向上させてください！",
@@ -1030,6 +788,8 @@ LANG = {
         "tts_status_success": "✅ 音声再生完了!",
         "tts_status_fail": "❌ TTS生成失敗（データなし）",
         "tts_status_error": "❌ TTS APIエラーが発生しました",
+        "history_expander_title": "📝 以前の対応履歴をロード (最新 10件)", 
+        "initial_query_sample": "フランスのパリに到着しましたが、Klookで購入したeSIMがアクティベートできません。接続できなくて困っています。どうすればいいですか？", 
 
         # ⭐ 대화형/종료 메시지
         "button_mic_input": "音声入力",
@@ -1041,7 +801,7 @@ LANG = {
         "agent_response_header": "✍️ エージェント応答",
         "agent_response_placeholder": "顧客に返信 (必須情報の要求/確認、または解決策の提示)",
         "send_response_button": "応答送信",
-        "request_rebuttal_button": "顧客の次の反応を要求 (LLM 호출)",
+        "request_rebuttal_button": "顧客の次の反応を要求", # ⭐ LLM 호출 텍스트 제거
         "new_simulation_button": "新しいシミュレーションを開始",
         "history_selectbox_label": "履歴を選択してロード:",
         "history_load_button": "選択された履歴をロード"
@@ -1169,7 +929,7 @@ if st.session_state.get('firestore_db'):
     if st.session_state.get('firestore_load_success', False):
         st.success("✅ RAG 인덱스가 데이터베이스에서 성공적으로 로드되었습니다!")
     elif not st.session_state.get('is_rag_ready', False):
-        st.info("데이터베이스에서 기존 RAG 인덱스를 찾을 수 없습니다. 파일을 업로드하여 새로 만드세요.")
+        st.info(L["firestore_no_index"]) # ⭐ 다국어 적용
 
 
 # ================================
@@ -1263,7 +1023,7 @@ if feature_selection == L["simulator_tab"]:
     # ⭐ Firebase 상담 이력 로드 및 선택 섹션
     db = st.session_state.get('firestore_db')
     if db:
-        with st.expander("📝 이전 상담 이력 로드 (최근 10개)"):
+        with st.expander(L["history_expander_title"]): # ⭐ 다국어 적용
             histories = load_simulation_histories(db)
             if histories:
                 history_options = {
@@ -1272,11 +1032,11 @@ if feature_selection == L["simulator_tab"]:
                 }
                 
                 selected_key = st.selectbox(
-                    L["history_selectbox_label"], # ⭐ 다국어 적용
+                    L["history_selectbox_label"], 
                     options=list(history_options.keys())
                 )
                 
-                if st.button(L["history_load_button"]): # ⭐ 다국어 적용
+                if st.button(L["history_load_button"]): 
                     selected_history = history_options[selected_key]
                     
                     # 상태 복원
@@ -1304,7 +1064,7 @@ if feature_selection == L["simulator_tab"]:
         if st.session_state.is_chat_ended:
             st.success(L["prompt_customer_end"] + " " + L["prompt_survey"])
             
-            if st.button(L["new_simulation_button"], key="new_simulation"): # ⭐ 다국어 적용
+            if st.button(L["new_simulation_button"], key="new_simulation"): 
                  st.session_state.is_chat_ended = False
                  st.session_state.initial_advice_provided = False
                  st.session_state.simulator_messages = []
@@ -1316,14 +1076,14 @@ if feature_selection == L["simulator_tab"]:
         if 'customer_query_text_area' not in st.session_state:
             st.session_state.customer_query_text_area = ""
 
-        # ⭐ 초기값 설정: Klook eSIM 이슈 및 필수 정보 요청 유도
-        initial_query_placeholder = "프랑스 파리에 도착했는데, 클룩에서 구매한 eSIM이 활성화가 안 됩니다. 연결이 안 돼서 너무 곤란합니다. 어떻게 해야 하나요?"
+        # ⭐ 초기값 설정: Klook eSIM 이슈 및 필수 정보 요청 유도 (다국어 적용)
+        initial_query_placeholder = L["initial_query_sample"]
         
         customer_query = st.text_area(
             L["customer_query_label"],
             key="customer_query_text_area",
             height=150,
-            placeholder=initial_query_placeholder,
+            placeholder=initial_query_placeholder, # ⭐ 다국어 적용
             disabled=st.session_state.initial_advice_provided
         )
 
@@ -1356,7 +1116,7 @@ if feature_selection == L["simulator_tab"]:
             st.session_state.simulator_messages.append({"role": "customer", "content": customer_query})
             st.session_state.simulator_memory.chat_memory.add_user_message(customer_query)
             
-            # ⭐ 핵심 수정: AI에게 '협조적이지만 단계적으로 정보를 제공하는 고객 역할'을 명시적으로 부여
+            # ⭐ 핵심 수정: LLM 프롬프트에 협조적인 고객 역할을 부여하고, 정보 요청의 중요성을 강조
             initial_prompt = f"""
             You are an AI Customer Support Supervisor. Your task is to provide expert guidance to a customer support agent.
             The customer sentiment is: {customer_type_display}.
@@ -1371,7 +1131,7 @@ if feature_selection == L["simulator_tab"]:
             2. Current location status (e.g., In Paris, France or Still in Korea) - This is critical for connection issues.
             3. The last successful step completed based on the Klook eSIM guide (e.g., scanned QR code, 'Add eSIM' failed, activated data roaming, etc.) - This determines the troubleshooting path.
 
-            When the Agent subsequently asks for this information, **Roleplay as the Customer** who is slightly frustrated but **WILL COOPERATE** and provide the requested details piece by piece (not all at once). Respond in a friendly, helpful, but slightly hurried tone. Do not refuse to provide information repeatedly.
+            When the Agent subsequently asks for this information, **Roleplay as the Customer** who is slightly frustrated but **MUST BE HIGHLY COOPERATIVE** and provide the requested details piece by piece (not all at once). The customer MUST NOT argue or ask why the information is needed; they MUST immediately provide the requested detail to help the agent provide a solution quickly.
             """
             
             if not API_KEY:
@@ -1441,17 +1201,17 @@ if feature_selection == L["simulator_tab"]:
             # 1. 에이전트(사용자)가 응답할 차례 (초기 문의 후, 재반박 후, 매너 질문 후)
             if last_role in ["customer_rebuttal", "customer_end", "supervisor", "customer"]:
                 
-                st.markdown(f"### {L['agent_response_header']}") # ⭐ 다국어 적용
+                st.markdown(f"### {L['agent_response_header']}") 
                 
                 # st.text_area를 사용하여 명시적인 입력 필드를 제공
                 agent_response = st.text_area(
-                    L["agent_response_placeholder"], # ⭐ 다국어 적용
+                    L["agent_response_placeholder"], 
                     value="",
                     key="agent_response_area_text",
                     height=150
                 )
                 
-                if st.button(L["send_response_button"], key="send_agent_response"): # ⭐ 다국어 적용
+                if st.button(L["send_response_button"], key="send_agent_response"): 
                     if agent_response.strip():
                         st.session_state.simulator_messages.append(
                             {"role": "agent_response", "content": agent_response}
@@ -1470,7 +1230,7 @@ if feature_selection == L["simulator_tab"]:
                 col_end, col_next = st.columns([1, 2])
                 
                 # A) 응대 종료 버튼 (매너 종료)
-                if col_end.button(L["button_end_chat"], key="end_chat"): # ⭐ 다국어 적용
+                if col_end.button(L["button_end_chat"], key="end_chat"): 
                     closing_messages = get_closing_messages(current_lang_key)
                     
                     # 매너 질문과 최종 종료 인사는 AI의 응답으로 간주하여 메모리에 추가
@@ -1488,7 +1248,7 @@ if feature_selection == L["simulator_tab"]:
                     st.rerun()
 
                 # B) 고객의 다음 반응 요청 (LLM 호출)
-                if col_next.button(L["request_rebuttal_button"], key="request_rebuttal"): # ⭐ 다국어 적용
+                if col_next.button(L["request_rebuttal_button"], key="request_rebuttal"): # ⭐ LLM 호출 텍스트 제거
                     if not API_KEY:
                         st.warning("API Key가 없기 때문에 LLM을 통한 대화형 시뮬레이션은 불가능합니다.")
                         st.stop()
@@ -1497,15 +1257,14 @@ if feature_selection == L["simulator_tab"]:
                         st.error(L['llm_error_init'] + " (시뮬레이터 체인 초기화 실패)")
                         st.stop()
                         
-                    # ⭐ 핵심 수정된 프롬프트 (협조적인 고객을 유도)
+                    # ⭐ 핵심 수정된 프롬프트 (강력하게 협조적인 고객을 유도)
                     next_reaction_prompt = f"""
                     Analyze the entire chat history. Roleplay as the customer ({customer_type_display}). 
                     Based on the agent's last message, generate ONE of the following responses in the customer's voice:
-                    1. Provide **ONE** of the crucial, previously requested details (Model, Location, or Last Step) in a cooperative tone, especially if the agent specifically asked for it.
-                    2. A short, impatient, but cooperative follow-up question (e.g., "Why do you need that?" or "Can we hurry?").
-                    3. A positive closing remark (e.g., "{L['customer_positive_response']}").
+                    1. Provide **ONE** of the crucial, previously requested details (Model, Location, or Last Step) in a cooperative tone.
+                    2. A short, positive closing remark (e.g., "{L['customer_positive_response']}").
                     
-                    Crucially, the customer is slightly frustrated but is **REQUIRED TO COOPERATE** by providing the necessary troubleshooting details (Model, Location, Last Step).
+                    Crucially, the customer MUST be highly cooperative. If the agent asks for information, the customer MUST provide the detail requested (Model, Location, or Last Step) without arguing or asking why. The purpose of this simulation is for the agent (human user) to practice systematically collecting information and troubleshooting.
                     
                     Do not provide any resolution yourself. Just the customer's message.
                     The response must be strictly in {LANG[current_lang_key]['lang_select']}.
