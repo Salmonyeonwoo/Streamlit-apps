@@ -605,10 +605,10 @@ LANG = {
         "quiz_error_llm": "퀴즈 생성 실패: LLM이 올바른 JSON 형식을 반환하지 않았습니다. LLM 응답 원본을 확인하세요。",
         "quiz_original_response": "LLM 원본 응답",
         "firestore_loading": "데이터베이스에서 RAG 인덱스 로드 중...",
-        "firestore_no_index": "데이터베이스에서 기존 RAG 인덱스를 찾을 수 없습니다. 파일을 업로드하여 새로 만드세요.", 
-        "db_save_complete": "(DB 저장 완료)", # ⭐ 다국어 키 추가
-        "data_analysis_progress": "자료 분석 및 학습 DB 구축 중...", # ⭐ 다국어 키 추가
-        "response_generating": "답변 생성 중...", # ⭐ 다국어 키 추가
+        "firestore_no_index": "데이터베이스에서 기존 RAG 인덱스를 찾을 수 없습니다. 파일을 업로드하여 새로 만드세요。", 
+        "db_save_complete": "(DB 저장 완료)",
+        "data_analysis_progress": "자료 분석 및 학습 DB 구축 중...",
+        "response_generating": "답변 생성 중...",
         "lstm_result_header": "학습 성취도 예측 결과",
         "lstm_score_metric": "현재 예측 성취도",
         "lstm_score_info": "다음 퀴즈 예상 점수는 약 **{predicted_score:.1f}점**입니다. 학습 성과를 유지하거나 개선하세요!",
@@ -744,11 +744,11 @@ LANG = {
         "new_simulation_button": "Start New Simulation",
         "history_selectbox_label": "Select history to load:",
         "history_load_button": "Load Selected History",
-        "delete_history_button": "❌ Delete All History", 
-        "delete_confirm_message": "Are you sure you want to delete ALL simulation history? This action cannot be undone.", 
-        "delete_confirm_yes": "Yes, Delete", 
-        "delete_confirm_no": "No, Keep", 
-        "delete_success": "✅ All simulation history deleted!" 
+        "delete_history_button": "❌ Delete All History", # ⭐ 다국어 키 추가
+        "delete_confirm_message": "Are you sure you want to delete ALL simulation history? This action cannot be undone.", # ⭐ 다국어 키 추가
+        "delete_confirm_yes": "Yes, Delete", # ⭐ 다국어 키 추가
+        "delete_confirm_no": "No, Keep", # ⭐ 다국어 키 추가
+        "delete_success": "✅ Successfully deleted!" # ⭐ 다국어 키 추가
     },
     "ja": {
         "title": "パーソナライズAI学習コーチ",
@@ -843,7 +843,7 @@ LANG = {
         "delete_confirm_message": "本当にすべてのシミュレーション履歴を削除してもよろしいですか？この操作は元に戻せません。", # ⭐ 다국어 키 추가
         "delete_confirm_yes": "はい、削除します", # ⭐ 다국어 키 추가
         "delete_confirm_no": "いいえ、維持します", # ⭐ 다국어 키 추가
-        "delete_success": "✅ すべてのシミュレーション履歴が削除されました!" # ⭐ 다국어 키 추가
+        "delete_success": "✅ 削除が完了されました!" # ⭐ 다국어 키 추가
     }
 }
 
@@ -1100,7 +1100,8 @@ if feature_selection == L["simulator_tab"]:
             st.warning(L["delete_confirm_message"])
             col_yes, col_no = st.columns(2)
             if col_yes.button(L["delete_confirm_yes"], key="confirm_delete_yes", type="primary"):
-                delete_all_history(db)
+                with st.spinner(L["deleting_history_progress"]): # ⭐ 삭제 로딩 스피너 추가
+                    delete_all_history(db)
             if col_no.button(L["delete_confirm_no"], key="confirm_delete_no"):
                 st.session_state.show_delete_confirm = False
                 st.rerun()
@@ -1200,7 +1201,7 @@ if feature_selection == L["simulator_tab"]:
             st.session_state.simulator_messages.append({"role": "customer", "content": customer_query})
             st.session_state.simulator_memory.chat_memory.add_user_message(customer_query)
             
-            # ⭐ 핵심 수정: LLM 프롬프트에 컨텍스트 분리 및 협조적인 고객 역할을 부여
+            # ⭐ LLM 프롬프트에 컨텍스트 분리 및 협조적인 고객 역할을 부여
             initial_prompt = f"""
             You are an AI Customer Support Supervisor. Your task is to provide expert guidance to a customer support agent.
             The customer sentiment is: {customer_type_display}.
@@ -1213,7 +1214,7 @@ if feature_selection == L["simulator_tab"]:
             The recommended draft MUST be strictly in {LANG[current_lang_key]['lang_select']}.
             
             **CRITICAL RULE FOR DRAFT CONTENT:**
-            - **Core Topic Filtering:** Analyze the customer's inquiry to determine its main subject (e.g., eSIM issue, ticket price, refund). 
+            - **Core Topic Filtering:** Analyze the customer's inquiry to determine its main subject. 
             - **Draft Content:** The draft MUST address the core topic directly. The draft MUST ONLY request *general* information needed for ALL inquiries (like booking ID, contact info). 
             - **Technical Info:** The draft MUST NOT include specific technical troubleshooting requests (Smartphone model, Location, Last Step of troubleshooting) **UNLESS** the core inquiry is explicitly about connection/activation failures (like "won't activate" or "no connection"). If the inquiry is about eSIM activation failure, use a standard troubleshooting request template.
             
