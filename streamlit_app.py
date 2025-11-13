@@ -261,12 +261,12 @@ def synthesize_and_play_audio(current_lang_key):
         
         // 이벤트 핸들러 설정
         utterance.onstart = () => {{
-            statusElement.innerText = '{LANG[current_lang_key].get("tts_status_generating", "オーディオ生成中...")}';
+            statusElement.innerText = '{LANG[current_lang_key].get("tts_status_generating", "오디오 생성 중...")}';
             statusElement.style.backgroundColor = '#fff3e0';
         }};
         
         utterance.onend = () => {{
-            statusElement.innerText = '{LANG[current_lang_key].get("tts_status_success", "✅ オーディオ再生完了!")}';
+            statusElement.innerText = '{LANG[current_lang_key].get("tts_status_success", "✅ 오디오 재생 완료!")}';
             statusElement.style.backgroundColor = '#e8f5e9';
              setTimeout(() => {{ 
                  statusElement.innerText = getReadyText(langKey);
@@ -275,7 +275,7 @@ def synthesize_and_play_audio(current_lang_key):
         }};
         
         utterance.onerror = (event) => {{
-            statusElement.innerText = '{LANG[current_lang_key].get("tts_status_error", "❌ TTSエラー発生")}';
+            statusElement.innerText = '{LANG[current_lang_key].get("tts_status_error", "❌ TTS 오류 발생")}';
             statusElement.style.backgroundColor = '#ffebee';
             console.error("SpeechSynthesis Error:", event);
              setTimeout(() => {{ 
@@ -285,7 +285,7 @@ def synthesize_and_play_audio(current_lang_key):
         }};
 
         window.speechSynthesis.cancel(); // Stop any current speech
-        setVoiceAndSpeak(); // 再生開始
+        setVoiceAndSpeak(); // 재생 시작
 
     }};
     </script>
@@ -305,7 +305,7 @@ def render_tts_button(text_to_speak, current_lang_key):
     st.markdown(f"""
         <button onclick="{js_call}"
                 style="background-color: #4338CA; color: white; padding: 10px 20px; border-radius: 5px; cursor: pointer; border: none; width: 100%; font-weight: bold; margin-bottom: 10px;">
-            {LANG[current_lang_key].get("button_listen_audio", "音声で聞く")} 🎧
+            {LANG[current_lang_key].get("button_listen_audio", "음성으로 듣기")} 🎧
         </button>
     """, unsafe_allow_html=True)
 
@@ -516,14 +516,14 @@ def render_interactive_quiz(quiz_data, current_lang):
     options_list = list(options_dict.values())
     
     selected_answer = st.radio(
-        L.get("select_answer", "정답을 선택하세요"),
+        L.get("select_answer", "正解を選択してください"),
         options=options_list,
         key=f"q_radio_{q_index}"
     )
 
     col1, col2 = st.columns(2)
 
-    if col1.button(L.get("check_answer", "정답 확인"), key=f"check_btn_{q_index}", disabled=st.session_state.quiz_submitted):
+    if col1.button(L.get("check_answer", "正解確認"), key=f"check_btn_{q_index}", disabled=st.session_state.quiz_submitted):
         user_choice_letter = selected_answer.split(')')[0] if selected_answer else None
         correct_answer_letter = q_data['correct_answer']
 
@@ -533,24 +533,24 @@ def render_interactive_quiz(quiz_data, current_lang):
         st.session_state.quiz_submitted = True
         
         if is_correct:
-            st.success(L.get("correct_answer", "정답입니다! 🎉"))
+            st.success(L.get("correct_answer", "正解です！ 🎉"))
         else:
-            st.error(L.get("incorrect_answer", "오답입니다.😞"))
+            st.error(L.get("incorrect_answer", "不正解です。😞"))
         
-        st.markdown(f"**{L.get('correct_is', '정답')}: {correct_answer_letter}**")
-        st.info(f"**{L.get('explanation', '해설')}:** {q_data['explanation']}")
+        st.markdown(f"**{L.get('correct_is', '正解')}**: {correct_answer_letter}")
+        st.info(f"**{L.get('explanation', '解説')}**: {q_data['explanation']}")
 
     if st.session_state.quiz_submitted:
         if q_index < num_questions - 1:
-            if col2.button(L.get("next_question", "다음 문항"), key=f"next_btn_{q_index}"):
+            if col2.button(L.get("next_question", "次の質問"), key=f"next_btn_{q_index}"):
                 st.session_state.current_question += 1
                 st.session_state.quiz_submitted = False
                 st.rerun()
         else:
             total_correct = st.session_state.quiz_results.count(True)
             total_questions = len(st.session_state.quiz_results)
-            st.success(f"**{L.get('quiz_complete', '퀴즈 완료!')}** {L.get('score', '점수')}: {total_correct}/{total_questions}")
-            if st.button(L.get("retake_quiz", "퀴즈 다시 풀기"), key="retake"):
+            st.success(f"**{L.get('quiz_complete', 'クイズ完了!')}** {L.get('score', 'スコア')}: {total_correct}/{total_questions}")
+            if st.button(L.get("retake_quiz", "クイズを再挑戦"), key="retake"):
                 st.session_state.current_question = 0
                 st.session_state.quiz_results = [None] * num_questions
                 st.session_state.quiz_submitted = False
@@ -752,17 +752,13 @@ LANG = {
         "delete_confirm_message": "Are you sure you want to delete ALL simulation history? This action cannot be undone.", 
         "delete_confirm_yes": "Yes, Delete", 
         "delete_confirm_no": "No, Keep", 
-        "delete_success": "✅ Successfully deleted!", 
-        "deleting_history_progress": "Deleting history...", 
-        "search_history_label": "Search History by Keyword", 
-        "date_range_label": "Date Range Filter", 
-        "no_history_found": "No history found matching the criteria." 
+        "delete_success": "✅ All simulation history deleted!" 
     },
     "ja": {
         "title": "パーソナライズAI学習コーチ",
         "sidebar_title": "📚 AI学習コーチ設定",
         "file_uploader": "学習資料をアップロード (PDF, TXT, HTML)",
-        "button_start_analysis": "資料分析開始 (RAGインデックス作成)",
+        "button_start_analysis": "Start Analysis (RAG Indexing)",
         "rag_tab": "RAG知識チャットボット",
         "content_tab": "カスタムコンテンツ生成",
         "lstm_tab": "LSTM達成度予測ダッシュボード",
@@ -846,7 +842,12 @@ LANG = {
         "request_rebuttal_button": "顧客の次の反応を要求", 
         "new_simulation_button": "新しいシミュレーションを開始",
         "history_selectbox_label": "履歴を選択してロード:",
-        "history_load_button": "選択された履歴をロード"
+        "history_load_button": "選択された履歴をロード",
+        "delete_history_button": "❌ 全履歴を削除", # ⭐ 다국어 키 추가
+        "delete_confirm_message": "本当にすべてのシミュレーション履歴を削除してもよろしいですか？この操作は元に戻せません。", # ⭐ 다국어 키 추가
+        "delete_confirm_yes": "はい、削除します", # ⭐ 다국어 키 추가
+        "delete_confirm_no": "いいえ、維持します", # ⭐ 다국어 키 추가
+        "delete_success": "✅ 削除が完了されました!" # ⭐ 다국어 키 추가
     }
 }
 
