@@ -1214,11 +1214,7 @@ elif feature_selection == L["simulator_tab"]:
         
         current_lang_key = st.session_state.language 
 
-        if st.button(
-            L["button_simulate"], 
-            key="start_simulation", 
-            disabled=st.session_state.initial_advice_provided
-        ):
+        if st.button(L["button_simulate"], key="start_simulation", disabled=st.session_state.initial_advice_provided):
             print("Simulation started!")
             if not customer_query: st.warning(L["simulation_warning_query"]); st.stop()
             
