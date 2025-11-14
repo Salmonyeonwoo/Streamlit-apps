@@ -38,7 +38,8 @@ from langchain.schema.document import Document
 from langchain.prompts import PromptTemplate
 from streamlit_mic_recorder import mic_recorder # Assuming this is the desired component
 from tensorflow.keras.models import Sequential # Re-enabled for LSTM mock
-
+from langchain_openai import ChatOpenAI 
+from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 # -----------------------------
 # 1. Config & I18N (다국어 지원)
 # -----------------------------
@@ -825,13 +826,27 @@ openai_client = openai_client_obj
 st.session_state.openai_init_msg = openai_msg
 
 # --- LLM 초기화 ---
-client = OpenAI(api_key=openai_key)
-res = client.embeddings.create(model="text-embedding-3-small", input=text)
-embedding = res.data[0].embedding
-if 'llm' not in st.session_state and API_KEY:
+# --- LLM 초기화 ---
+# 시뮬레이터/RAG용 LLM 키로 OPENAI_API_KEY를 사용하도록 변경
+LLM_API_KEY = os.environ.get("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY")
+LLM_MODEL = "gpt-3.5-turbo" # 사용할 OpenAI 모델 지정
+
+if 'llm' not in st.session_state and LLM_API_KEY:
     try:
-        st.session_state.llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.7, google_api_key=API_KEY)
-        st.session_state.embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=API_KEY)
+        # ChatOpenAI 사용 (RAG/Simulator)
+        st.session_state.llm = ChatOpenAI(model=LLM_MODEL, temperature=0.7, openai_api_key=LLM_API_KEY)
+        
+        # 임베딩도 OpenAI의 Embeddings 모델로 치환
+        # 주: Langchain에서 OpenAIEmbeddings는 별도 모듈 임포트 필요 (혹은 GoogleGenerativeAIEmbeddings를 Mock 처리)
+        # 임베딩은 그대로 Mock 객체를 사용하거나, OpenAI Embeddings를 사용해야 함.
+        # 현재는 Mock 객체가 있으므로, 오류 방지를 위해 임베딩 초기화 코드를 제거하거나 Mock에 의존합니다.
+        
+        # ⭐ 임베딩 로직은 복잡해지므로, RAG가 Mock 객체를 사용하도록 의존하는 상태를 유지하고
+        #    LLM(Chat)만 OpenAI로 변경하는 것을 권장합니다.
+        
+        # [옵션 1] (권장): LLM만 OpenAI로 바꾸고 Embeddings는 Mock에 의존
+        # st.session_state.embeddings = GoogleGenerativeAIEmbeddings(...) 이 코드를 제거하거나 주석 처리
+        
         st.session_state.is_llm_ready = True
         
         SIMULATOR_PROMPT = PromptTemplate(
@@ -845,10 +860,10 @@ if 'llm' not in st.session_state and API_KEY:
             input_key="input",
         )
     except Exception as e:
-        st.session_state.llm_init_error_msg = f"{L['llm_error_init']} (Gemini): {e}"
+        st.session_state.llm_init_error_msg = f"{L['llm_error_init']} (OpenAI): {e}"
         st.session_state.is_llm_ready = False
-elif not API_KEY:
-    st.session_state.llm_init_error_msg = L["llm_error_key"]
+elif not LLM_API_KEY:
+    st.session_state.llm_init_error_msg = L["openai_missing"] # OpenAI 키가 없음을 알림
 
 # RAG Index Loading
 if st.session_state.get('firestore_db') and 'conversation_chain' not in st.session_state and st.session_state.is_llm_ready:
