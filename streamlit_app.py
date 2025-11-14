@@ -30,7 +30,6 @@ from google.cloud.firestore import Query
 from langchain.chains import ConversationalRetrievalChain, ConversationChain
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
 from langchain_community.vectorstores import FAISS
-# [수정] RecursiveCharacterSplitter -> RecursiveCharacterTextSplitter
 from langchain.text_splitter import RecursiveCharacterTextSplitter 
 from langchain.memory import ConversationBufferMemory
 from langchain.schema.document import Document
@@ -237,7 +236,8 @@ LANG = {
         "simulator_header": "AI Customer Response Simulator",
         "simulator_desc": "Provides AI draft responses and guidelines for difficult customer inquiries.",
         "customer_query_label": "Customer Query (Links included)", 
-        "customer_type_options": ["General Inquiry", "Difficult Customer", "Highly Dissatisfied Customer"], # <-- [추가] 누락 키
+        "customer_type_label": "Customer Type", # <-- [추가] 누락 키
+        "customer_type_options": ["General Inquiry", "Difficult Customer", "Highly Dissatisfied Customer"],
         "initial_query_sample": "I arrived in Paris, France, but the eSIM I bought from Klook won't activate. I'm really struggling to get connected. What should I do?", 
         "title": "Personalized AI Study Coach (Voice & DB Integration)",
         "sidebar_title": "📚 AI Study Coach Settings",
@@ -314,10 +314,10 @@ LANG = {
         "uploaded_file": '音声ファイルをアップロード',
         "transcript_result": '転写結果:',
         "transcript_text": '転写テキスト',
-        "llm_error_key": "⚠️ 警告: GEMINI APIキーが設定されていません。Streamlit Secretsに'GEMINI_API_KEY'を設置してください。",
-        "llm_error_init": "LLM 초기화 오류：APIキーを確認してください。",
+        "llm_error_key": "⚠️ 警告: GEMINI API키가 설정되어 있지 않습니다. Streamlit Secrets에 'GEMINI_API_KEY'를 설치해주세요。",
+        "llm_error_init": "LLM 초기화 오류：API키를 확인해주세요。",
         "simulation_warning_query": "顧客の問い合わせ内容を入力してください。",
-        "simulation_no_key_warning": "⚠️ APIキーが不足しています。応答の生成は続行できません。",
+        "simulation_no_key_warning": "⚠️ API키가 부족합니다。応答の生成は続行できません。",
         "simulation_advice_header": "AI対応ガイドライン",
         "simulation_draft_header": "推奨される対応草案",
         "button_listen_audio": "音声で聞く",
@@ -349,9 +349,10 @@ LANG = {
         "date_range_label": "日付範囲フィルター", 
         "no_history_found": "検索条件に一致する履歴はありません。",
         "simulator_header": "AI顧客対応シミュレーター",
-        "simulator_desc": "困難な顧客の問い合わせに対してAIの対応草案とガイドラインを提供します。",
+        "simulator_desc": "困難な顧客의問い合わせに対してAIの対応草案とガイドラインを提供します。",
         "customer_query_label": "顧客の問い合わせ内容 (リンクを含む)", 
-        "customer_type_options": ["一般的な問い合わせ", "困難な顧客", "非常に不満な顧客"], # <-- [추가] 누락 키
+        "customer_type_label": "顧客の傾向", # <-- [추가] 누락 키
+        "customer_type_options": ["一般的な問い合わせ", "困難な顧客", "非常に不満な顧客"],
         "initial_query_sample": "フランスのパリに到着しましたが、Klookで購入したeSIMがアクティベートできません。接続できなくて困っています。どうすればいいですか？", 
         "title": "パーソナライズAI学習コーチ (音声・DB統合)",
         "sidebar_title": "📚 AI学習コーチ設定",
@@ -397,7 +398,7 @@ LANG = {
         "response_generating": "応答生成中...", 
         "lstm_result_header": "達成度予測結果",
         "lstm_score_metric": "現在の予測達成度",
-        "lstm_score_info": "次のクイズの推定スコ어は約 **{predicted_score:.1f}点**です。学習の成果を維持または向上させてください！",
+        "lstm_score_info": "次のクイズの推定スコ어は約 **{predicted_score:.1f}点**입니다。学習の成果を維持または向上させてください！",
         "lstm_rerun_button": "新しい仮想データで予測",
         "rec_header": "音声入力と転写",
         "whisper_processing": "音声転写処理中",
@@ -824,9 +825,9 @@ def get_mock_response_data(lang_key, customer_type):
 def get_closing_messages(lang_key):
     if lang_key == 'ko': 
         return {"additional_query": "또 다른 문의 사항은 없으신가요?", "chat_closing": LANG['ko']['prompt_survey']}
-    elif lang_key == 'en': # lang_key로 수정
+    elif lang_key == 'en': 
         return {"additional_query": "Is there anything else we can assist you with today?", "chat_closing": LANG['en']['prompt_survey']}
-    elif lang_key == 'ja': # lang_key로 수정
+    elif lang_key == 'ja': 
         return {"additional_query": "また、お客様にお手伝いさせて頂けるお問い合わせは御座いませんか？", "chat_closing": LANG['ja']['prompt_survey']}
     return get_closing_messages('ko')
 # --- End Helper Functions ---
@@ -1083,7 +1084,7 @@ if feature_selection == L["voice_rec_header"]:
                             elif data.get('gcs_path') and gcs_client and bucket_name:
                                 with st.spinner(L['transcribing']):
                                     try:
-                                        # ⭐ [수정] 함수 이름 오타 수정
+                                        # ⭐ [수정] 함수 이름 오타 수정 반영
                                         blob_bytes = download_audio_from_gcs(bucket_name, data['gcs_path'].split(f'gs://{bucket_name}/')[-1])
                                         mime_type = data.get('mime_type', 'audio/webm')
                                         new_text = transcribe_bytes_with_whisper(
@@ -1205,10 +1206,13 @@ elif feature_selection == L["simulator_tab"]:
         )
         customer_type_options_list = L["customer_type_options"]
         default_index = 1 if len(customer_type_options_list) > 1 else 0
-        customer_type_display = st.selectbox(
+        st.selectbox(
             L["customer_type_label"], customer_type_options_list, index=default_index, disabled=st.session_state.initial_advice_provided,
             key='customer_type_sim_select'
         )
+        # ⭐ [수정] selectbox 결과를 변수에 저장하여 사용
+        customer_type_display = st.session_state.customer_type_sim_select
+        
         current_lang_key = st.session_state.language 
 
         if st.button(L["button_simulate"], key="start_simulation", disabled=st.session_state.initial_advice_provided):
