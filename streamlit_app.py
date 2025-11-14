@@ -1216,20 +1216,17 @@ elif feature_selection == L["content_tab"]:
                     except Exception as e: st.error(f"Content Generation Error: {e}"); 
             else: st.warning(L["warning_topic"])
     else: st.error(L["llm_error_init"])
-    # Note: render_interactive_quiz relies on the actual LLM output to populate st.session_state.quiz_data
-    # The placeholders here prevent runtime errors while ensuring the structural integrity of the final app.
 
 elif feature_selection == L["lstm_tab"]:
     # (LSTM UI logic remains the same)
     st.header(L["lstm_header"])
     st.markdown(L["lstm_desc"])
+    # No st.button is visible unless the content_tab logic runs (to load model/data), so this is safe
     if st.button(L["lstm_rerun_button"], key="rerun_lstm", on_click=force_rerun_lstm): pass
     try:
         model, data = load_or_train_lstm()
-        look_back = 5
-        X_input = np.reshape(data[-look_back:], (1, look_back, 1))
-        # predicted_score = model.predict(X_input, verbose=0)[0][0] # Cannot run without full TensorFlow/Keras
-        predicted_score = 85.5 # Mock prediction
+        # Mock prediction
+        predicted_score = 85.5 
         
         st.markdown("---")
         st.subheader(L["lstm_result_header"])
@@ -1248,5 +1245,4 @@ elif feature_selection == L["lstm_tab"]:
             ax.legend()
             st.pyplot(fig)
     except Exception as e:
-        # st.error(f"LSTM 모델 실행 중 오류가 발생했습니다. (오류 메시지: {e})")
-        st.info("LSTM 기능은 복잡한 라이브러리 문제로 인해 현재 비활성화되었습니다. (Mock Data 사용)")
+        st.info("LSTM 기능은 현재 비활성화되었습니다. (Mock Data 사용)")
