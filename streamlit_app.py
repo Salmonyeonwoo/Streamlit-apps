@@ -252,16 +252,16 @@ def transcribe_audio_with_whisper(audio_file, client, lang_key):
     
     if client is None:
         # OpenAI Key가 없는 경우 오류 메시지 반환
-        return L.get("whisper_client_error", "❌ 오류: Whisper API Client가 초기화되지 않았습니다.")
+        return L.get("whisper_client_error", "❌ 오류: Whisper API Client가 초기화되지 않았습니다. Secrets에 OPENAI_API_KEY를 설정했는지 확인하세요.")
     
     # UploadedFile 객체의 내용을 임시 파일에 기록
     temp_dir = tempfile.mkdtemp()
     temp_audio_path = "" # 초기화
     
     try:
-        # st.audio_input의 경우 파일 이름이 없어 name 속성이 None일 수 있음 (Streamlit 버전 1.38.0 가정)
+        # st.audio_input은 파일 이름이 없어 name 속성이 None일 수 있음 (Streamlit 버전 1.38.0 가정)
         # BytesIO 객체에서 MIME 타입 가져오기 시도
-        mime_type = audio_file.type if hasattr(audio_file, 'type') else 'audio/wav'
+        mime_type = audio_file.type if hasattr(audio_file, 'type') and audio_file.type else 'audio/wav'
         # 파일 확장자 추정
         file_extension = mime_type.split('/')[-1].lower() if '/' in mime_type else 'wav' 
         
@@ -354,12 +354,12 @@ def synthesize_and_play_audio(current_lang_key):
         
         // 이벤트 핸들러 설정
         utterance.onstart = () => {{
-            statusElement.innerText = '{LANG[current_lang_key].get("tts_status_generating", "오디오 생성 중...")}';
+            statusElement.innerText = '{LANG[current_lang_key].get("tts_status_generating", "オーディオ生成中...")}';
             statusElement.style.backgroundColor = '#fff3e0';
         }};
         
         utterance.onend = () => {{
-            statusElement.innerText = '{LANG[current_lang_key].get("tts_status_success", "✅ 오디오 재생 완료!")}';
+            statusElement.innerText = '{LANG[current_lang_key].get("tts_status_success", "✅ オーディオ再生完了!")}';
             statusElement.style.backgroundColor = '#e8f5e9';
              setTimeout(() => {{ 
                  statusElement.innerText = getReadyText(langKey);
@@ -368,7 +368,7 @@ def synthesize_and_play_audio(current_lang_key):
         }};
         
         utterance.onerror = (event) => {{
-            statusElement.innerText = '{LANG[current_lang_key].get("tts_status_error", "❌ TTS 오류 발생")}';
+            statusElement.innerText = '{LANG[current_lang_key].get("tts_status_error", "❌ TTSエラー発生")}';
             statusElement.style.backgroundColor = '#ffebee';
             console.error("SpeechSynthesis Error:", event);
              setTimeout(() => {{ 
@@ -378,7 +378,7 @@ def synthesize_and_play_audio(current_lang_key):
         }};
 
         window.speechSynthesis.cancel(); // Stop any current speech
-        setVoiceAndSpeak(); // 재생 시작
+        setVoiceAndSpeak(); // 再生開始
 
     }};
     </script>
@@ -398,7 +398,7 @@ def render_tts_button(text_to_speak, current_lang_key):
     st.markdown(f"""
         <button onclick="{js_call}"
                 style="background-color: #4338CA; color: white; padding: 10px 20px; border-radius: 5px; cursor: pointer; border: none; width: 100%; font-weight: bold; margin-bottom: 10px;">
-            {LANG[current_lang_key].get("button_listen_audio", "음성으로 듣기")} 🎧
+            {LANG[current_lang_key].get("button_listen_audio", "音声で聞く")} 🎧
         </button>
     """, unsafe_allow_html=True)
 
@@ -742,15 +742,15 @@ LANG = {
         "new_simulation_button": "새 시뮬레이션 시작",
         "history_selectbox_label": "로드할 이력을 선택하세요:",
         "history_load_button": "선택된 이력 로드",
-        "delete_history_button": "❌ 모든 이력 삭제", # ⭐ 다국어 키 추가
-        "delete_confirm_message": "정말로 모든 상담 이력을 삭제하시겠습니까? 되돌릴 수 없습니다。", # ⭐ 다국어 키 추가
-        "delete_confirm_yes": "예, 삭제합니다", # ⭐ 다국어 키 추가
-        "delete_confirm_no": "아니오, 유지합니다", # ⭐ 다국어 키 추가
-        "delete_success": "✅ 모든 상담 이력 삭제 완료!", # ⭐ 다국어 키 추가
-        "deleting_history_progress": "이력 삭제 중...", # ⭐ 다국어 키 추가
-        "search_history_label": "이력 키워드 검색", # ⭐ 다국어 키 추가
-        "date_range_label": "날짜 범위 필터", # ⭐ 다국어 키 추가
-        "no_history_found": "검색 조건에 맞는 이력이 없습니다。" # ⭐ 다국어 키 추가
+        "delete_history_button": "❌ 모든 이력 삭제", 
+        "delete_confirm_message": "정말로 모든 상담 이력을 삭제하시겠습니까? 되돌릴 수 없습니다。", 
+        "delete_confirm_yes": "예, 삭제합니다", 
+        "delete_confirm_no": "아니오, 유지합니다", 
+        "delete_success": "✅ 모든 상담 이력 삭제 완료!",
+        "deleting_history_progress": "이력 삭제 중...", 
+        "search_history_label": "이력 키워드 검색", 
+        "date_range_label": "날짜 범위 필터", 
+        "no_history_found": "검색 조건에 맞는 이력이 없습니다。" 
     },
     "en": {
         "title": "Personalized AI Study Coach",
@@ -910,7 +910,7 @@ LANG = {
         "simulator_desc": "難しい顧客の問い合わせに対して、AIによる対応案とガイドラインを提供します。",
         "customer_query_label": "顧客の問い合わせ内容（リンク任意）",
         "customer_type_label": "顧客の傾向",
-        "customer_type_options": ["一般的な問い合わせ", "手ごわ이顧客", "非常に不満な顧客"],
+        "customer_type_options": ["一般的な問い合わせ", "手ごわい顧客", "非常に不満な顧客"],
         "button_simulate": "対応アドバイスを要求",
         "simulation_warning_query": "顧客の問い合わせ内容を入力してください。",
         "simulation_no_key_warning": "⚠️ APIキーが不足しています。応答の生成は続行できません。（UI設定は完了しています。）",
@@ -1439,7 +1439,6 @@ if feature_selection == L["simulator_tab"]:
                 openai_client = None
                 if openai_key:
                     try:
-                        # OpenAI Client 초기화 시도
                         openai_client = OpenAI(api_key=openai_key)
                     except Exception:
                         openai_client = None
@@ -1462,13 +1461,14 @@ if feature_selection == L["simulator_tab"]:
                                 # 전사 함수 호출
                                 transcribed_text = transcribe_audio_with_whisper(audio_file, openai_client, current_lang_key)
                                 
-                                if transcribed_text.startswith("❌") or transcribed_text.startswith("오류"):
+                                if transcribed_text.startswith("❌"):
                                     st.error(transcribed_text)
                                     st.session_state.transcribed_text = ""
                                 else:
                                     st.session_state.transcribed_text = transcribed_text
                                     st.success(L.get("whisper_success", "✅ 음성 전사 완료! 텍스트 창을 확인하세요."))
                                 
+                                # st.audio_input은 파일 객체를 반환하므로, rerun을 통해 텍스트 영역에 값을 반영합니다.
                                 st.rerun() 
                                 
                             except Exception as e:
