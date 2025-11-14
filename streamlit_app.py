@@ -23,9 +23,9 @@ from openai import OpenAI
 import firebase_admin
 from firebase_admin import credentials, firestore, initialize_app, get_app
 from google.cloud import storage
-from google.cloud.exceptions import NotFound 
+from google.cloud.exceptions import NotFound
 from google.cloud import firestore as gcp_firestore
-from google.cloud.firestore import Query 
+from google.cloud.firestore import Query
 
 # LangChain Imports
 from langchain.chains import ConversationalRetrievalChain, ConversationChain
@@ -35,7 +35,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmb
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.memory import ConversationBufferMemory
 from langchain.schema.document import Document
-from langchain.prompts import PromptTemplate 
+from langchain.prompts import PromptTemplate
 
 # -----------------------------
 # 1. Config & I18N (다국어 지원)
