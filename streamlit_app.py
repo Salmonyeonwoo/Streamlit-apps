@@ -689,10 +689,36 @@ def delete_all_history(db):
 # --- Utility Placeholder Functions ---
 def get_document_chunks(files):
     return [] 
+
+
 def get_vector_store(text_chunks):
-    return None 
+    # Mock Vector Store 반환 (성공 가정)
+    if not text_chunks:
+        return None
+    
+    # Mock 객체 반환 (실제 FAISS 객체가 아님)
+    class MockVectorStore:
+        def as_retriever(self, search_kwargs):
+            return self
+        def get_relevant_documents(self, query):
+            # Mock Document Source
+            return [Document(page_content="Mock RAG content about the uploaded files.")]
+            
+    return MockVectorStore() 
+
 def get_rag_chain(vector_store):
-    return None 
+    # Mock RAG Chain 반환 (성공 가정)
+    if vector_store is None:
+        return None
+
+    class MockRAGChain:
+        def invoke(self, inputs):
+            question = inputs.get('question', '질문 없음')
+            # Mock 답변 생성
+            return {"answer": f"요청하신 '{question}'에 대해 학습된 자료를 바탕으로 답변합니다. (Mock Response)"}
+
+    return MockRAGChain() 
+
 def save_index_to_firestore(db, vector_store, index_id="user_portfolio_rag"):
     return True 
 def load_index_from_firestore(db, embeddings, index_id="user_portfolio_rag"):
@@ -1246,22 +1272,33 @@ Customer Inquiry: {customer_query}
                 # ... (중략) ...
 
                 # 오디오 파일 녹음/업로드 (mic_recorder component 사용)
+                # ... (중략) ...
+
+                # 오디오 파일 녹음/업로드 (mic_recorder component 사용)
                 with col_audio:
                     # ⭐ mic_recorder component 사용: 녹음 결과(dict)를 mic_result에 저장합니다.
                     mic_result = mic_recorder(
                         start_prompt=L["button_mic_input"], 
-                        stop_prompt="✔️ Stop Recording", # 임시 텍스트
+                        stop_prompt="✔️ Stop Recording", 
                         key="simulator_audio_input_file"
                     )
                 
                 # audio_bytes_from_mic와 mime_type을 세션 상태에 저장 및 업데이트
+                # --- [수정] 녹음 완료 시 즉시 RERUN하여 데이터 반영 ---
+                is_audio_just_recorded = False
                 if mic_result and mic_result.get('audio_bytes'):
-                    # 녹음된 오디오 데이터가 존재할 경우에만 세션 상태를 업데이트
-                    st.session_state['sim_audio_bytes'] = mic_result['audio_bytes']
-                    st.session_state['sim_audio_mime'] = mic_result.get('mime_type', 'audio/webm')
-                    st.info("녹음 완료! 전사 버튼을 눌러주세요.")
+                    if st.session_state.get('sim_audio_bytes') is None: # 이전에 저장된 데이터가 없으면
+                        st.session_state['sim_audio_bytes'] = mic_result['audio_bytes']
+                        st.session_state['sim_audio_mime'] = mic_result.get('mime_type', 'audio/webm')
+                        is_audio_just_recorded = True # 녹음 완료 플래그 설정
+                    
                 
-                # --- [수정] 전사 버튼 추가 및 로직 분리 ---
+                # 녹음이 방금 완료되었다면, 세션 상태를 반영하기 위해 즉시 RERUN
+                if is_audio_just_recorded:
+                    st.info("✅ 녹음 완료! 아래의 전사 버튼을 눌러 텍스트를 생성하세요.")
+                    st.rerun() # 필수: 데이터가 반영되도록 페이지를 새로 고침
+
+                # --- [수정] 전사 버튼 실행 로직 ---
                 col_transcribe, _ = st.columns([1, 2])
                 
                 if col_transcribe.button(L["transcribe_btn"], key='start_whisper_transcribe'):
@@ -1270,7 +1307,7 @@ Customer Inquiry: {customer_query}
                     audio_mime_to_transcribe = st.session_state.get('sim_audio_mime', 'audio/webm')
                     
                     if audio_bytes_to_transcribe is None:
-                        st.warning("먼저 마이크로 녹음을 완료하거나 오디오 파일을 업로드하세요.")
+                        st.warning("먼저 마이크로 녹음을 완료하거나 오디오 파일을 업로드하세요.")                    
                     elif openai_client is None:
                         st.error(L.get("whisper_client_error", "OpenAI Key가 없어 음성 인식을 사용할 수 없습니다."))
                     else:
