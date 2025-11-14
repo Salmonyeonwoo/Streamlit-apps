@@ -36,6 +36,8 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.memory import ConversationBufferMemory
 from langchain.schema.document import Document
 from langchain.prompts import PromptTemplate
+from streamlit_mic_recorder import mic_recorder # Assuming this is the desired component
+from tensorflow.keras.models import Sequential # Re-enabled for LSTM mock
 
 # -----------------------------
 # 1. Config & I18N (다국어 지원)
@@ -1231,7 +1233,25 @@ Customer Inquiry: {customer_query}
                 # 오디오 파일 녹음/업로드 (st.audio_input)
                 with col_audio:
                     # ⭐ st.audio_input 위젯 사용
-                    audio_file = st.audio_input(L["button_mic_input"], key="simulator_audio_input_file")
+                    # 오디오 파일 녹음/업로드 (mic_recorder component 사용)
+                with col_audio:
+                    # ⭐ mic_recorder component 사용
+                    # mic_recorder는 bytes 대신 audio_bytes, mime_type을 가진 dictionary를 반환합니다.
+                    # start_prompt와 stop_prompt는 L["button_mic_input"] 등을 사용해야 합니다.
+                    mic_result = mic_recorder(
+                        start_prompt=L["button_mic_input"], 
+                        stop_prompt="✔️ Stop Recording", # 임시 텍스트
+                        key="simulator_audio_input_file"
+                    )
+                    # mic_result는 {'audio_bytes': bytes, 'mime_type': str} 형태
+                
+                # audio_file 대신 mic_result.get('audio_bytes') 사용
+                audio_bytes_from_mic = mic_result.get('audio_bytes')
+                audio_mime_from_mic = mic_result.get('mime_type', 'audio/webm')
+
+                # 로직 변경: audio_file 대신 audio_bytes_from_mic 사용
+                if audio_bytes_from_mic is not None:
+                    # ... existing logic for transcription ...
                 
                 if audio_file is not None:
                     if openai_client is None:
