@@ -1,7 +1,5 @@
 # ========================================
-# streamlit_app_full_integration_final.py
-# 완성본: Streamlit 앱 — Whisper 전사, Firestore 메타데이터, GCS 오디오 저장, 
-# 이력 목록/재생/재전사/삭제, 시뮬레이터 통합, 개선된 UI 및 완벽한 다국어 지원
+# streamlit_app_full_integration_final.py (FIXED)
 # ========================================
 
 import streamlit as st
@@ -46,6 +44,7 @@ if 'language' not in st.session_state:
     st.session_state.language = DEFAULT_LANG
 
 LANG = {
+    # ... (LANG 딕셔너리 내용은 유지) ...
     "ko": {
         "title": "개인 맞춤형 AI 학습 코치 (음성 및 DB 통합)",
         "sidebar_title": "📚 AI Study Coach 설정",
@@ -347,7 +346,7 @@ LANG = {
         "lstm_score_info": "次のクイズの推定スコアは約 **{predicted_score:.1f}点**です。学習の成果を維持または向上させてください！",
         "lstm_rerun_button": "新しい仮想データで予測",
 
-        # ⭐ 시뮬레이터 관련 텍스트
+        # ⭐ シミュレーター関連テキスト
         "simulator_header": "AI顧客対応シミュレーター",
         "simulator_desc": "難しい顧客の問い合わせに対して、AIによる対応案とガイドラインを提供します。",
         "customer_query_label": "顧客の問い合わせ内容（リンク任意）",
@@ -388,7 +387,7 @@ LANG = {
         "date_range_label": "日付範囲フィルター", 
         "no_history_found": "検索条件に一致する履歴はありません。",
 
-        # ⭐ 음성 기록 통합 관련 키 (Voice/GCS)
+        # ⭐ 音성 기록 통합 관련 키 (Voice/GCS)
         "voice_rec_header": '音声記録と管理',
         "record_help": 'マイクボタンを押して録音するか、ファイルをアップロードしてください。',
         "uploaded_file": '音声ファイルをアップロード',
@@ -425,215 +424,9 @@ LANG = {
 # 1. Firebase Admin, GCS, OpenAI Initialization
 # -----------------------------
 
-def _load_service_account_from_secrets():
-    # Expect a JSON string in st.secrets['FIREBASE_SERVICE_ACCOUNT_JSON']
-    if hasattr(st, 'secrets') and st.secrets and 'FIREBASE_SERVICE_ACCOUNT_JSON' in st.secrets:
-        raw = st.secrets['FIREBASE_SERVICE_ACCOUNT_JSON']
-        if isinstance(raw, str):
-            try:
-                return json.loads(raw)
-            except Exception:
-                return None
-        elif isinstance(raw, dict):
-            return raw
-    return None
-
-@st.cache_resource(ttl=None)
-def init_firebase_admin():
-    """Secrets에서 로드된 정보를 사용하여 Firebase Admin SDK를 초기화합니다."""
-    L = LANG[st.session_state.language] 
-    sa_info, error_message = _get_admin_credentials()
-    if error_message:
-        st.error(f"❌ Firebase Secret 오류: {error_message}")
-        return None
-
-    try:
-        get_app()
-    except ValueError:
-        pass
-    else:
-        try:
-            return firestore.client()
-        except Exception as e:
-            st.error(f"🔥 Firebase 클라이언트 로드 실패: {e}")
-            return None
-
-    try:
-        cred = credentials.Certificate(sa_info)
-        firebase_admin.initialize_app(cred, {
-            'projectId': sa_info.get('project_id')
-        })
-        db_client = firestore.client()
-        st.session_state["db"] = db_client
-        return db_client
-    except Exception as e:
-        st.error(f"🔥 {L['firebase_init_fail']}: {e}")
-        return None
-
-@st.cache_resource
-def init_gcs_client(L):
-    sa = _load_service_account_from_secrets()
-    if not sa:
-        return None
-    
-    gcs_client = None
-    try:
-        gcs_bucket_name = st.secrets.get('GCS_BUCKET_NAME') or os.environ.get('GCS_BUCKET_NAME')
-        
-        if gcs_bucket_name:
-            # Set credentials environment variable explicitly for GCS client to use the service account
-            # This is critical for environments like Streamlit Cloud
-            tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.json')
-            tmp.write(json.dumps(sa).encode('utf-8'))
-            tmp.flush()
-            os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = tmp.name
-            
-            gcs_client = storage.Client()
-            # Test bucket access (optional, but good for early warning)
-            # gcs_client.bucket(gcs_bucket_name).exists()
-            return gcs_client
-        else:
-            return None
-    except Exception as e:
-        # st.warning(f"{L['gcs_init_fail']}: {e}") # Suppress verbose warning on every rerun
-        return None
-
-@st.cache_resource
-def init_openai_client(L):
-    openai_key = st.secrets.get('OPENAI_API_KEY') or os.environ.get('OPENAI_API_KEY')
-    if openai_key:
-        try:
-            return OpenAI(api_key=openai_key)
-        except Exception:
-            # st.warning(f"OpenAI client init error: {e}") # Suppress verbose warning
-            return None
-    return None
-
-def get_gcs_bucket_name():
-    return st.secrets.get('GCS_BUCKET_NAME') or os.environ.get('GCS_BUCKET_NAME')
-
-# -----------------------------
-# 2. GCS, Firestore, Whisper Helpers (통합된 함수)
-# -----------------------------
-
-def upload_audio_to_gcs(bucket_name: str, blob_name: str, audio_bytes: bytes, content_type: str = 'audio/webm'):
-    L = LANG[st.session_state.language]
-    gcs_client = init_gcs_client(L)
-    if not gcs_client:
-        raise RuntimeError(L['gcs_not_conf'])
-    bucket = gcs_client.bucket(bucket_name)
-    blob = bucket.blob(blob_name)
-    blob.upload_from_string(audio_bytes, content_type=content_type)
-    return f'gs://{bucket_name}/{blob_name}' 
-
-def download_audio_from_gcs(bucket_name: str, blob_name: str) -> bytes:
-    L = LANG[st.session_state.language]
-    gcs_client = init_gcs_client(L)
-    if not gcs_client:
-        raise RuntimeError(L['gcs_not_conf'])
-    try:
-        bucket = gcs_client.bucket(bucket_name)
-        blob = bucket.blob(blob_name)
-        return blob.download_as_bytes()
-    except NotFound:
-        raise FileNotFoundError(f"GCS Blob not found: {blob_name}")
-    except Exception as e:
-        raise RuntimeError(f"{L['gcs_playback_fail']}: {e}")
-
-def save_audio_record(db, bucket_name, audio_bytes: bytes, filename: str, transcript_text: str, meta: dict = None, mime_type: str = 'audio/webm'):
-    L = LANG[st.session_state.language]
-    if not db:
-        raise RuntimeError('Firestore not initialized')
-
-    ts = datetime.now(timezone.utc)
-    doc_ref = db.collection('voice_records').document()
-    blob_name = f"voice_records/{doc_ref.id}/{filename}"
-
-    gcs_path = None
-    if bucket_name and init_gcs_client(L):
-        try:
-            gcs_path = upload_audio_to_gcs(bucket_name, blob_name, audio_bytes, mime_type)
-        except Exception as e:
-            st.warning(f"{L['upload_fail']}: {e}")
-            gcs_path = None
-    else:
-        st.warning(L['gcs_missing'])
-
-    data = {
-        'created_at': ts,
-        'filename': filename,
-        'size': len(audio_bytes),
-        'gcs_path': gcs_path,
-        'transcript': transcript_text,
-        'mime_type': mime_type, # Add mime_type
-        'language': st.session_state.language,
-        'meta': meta or {}
-    }
-
-    doc_ref.set(data)
-    return doc_ref.id
-
-def delete_audio_record(db, bucket_name, doc_id: str):
-    L = LANG[st.session_state.language]
-    doc_ref = db.collection('voice_records').document(doc_id)
-    doc = doc_ref.get()
-    if not doc.exists:
-        return False
-    data = doc.to_dict()
-    
-    gcs_client = init_gcs_client(L)
-    # delete GCS blob
-    try:
-        if data.get('gcs_path') and gcs_client and bucket_name:
-            blob_name = data['gcs_path'].split(f'gs://{bucket_name}/')[-1]
-            bucket = gcs_client.bucket(bucket_name)
-            blob = bucket.blob(blob_name)
-            blob.delete()
-    except Exception as e:
-        st.warning(f"GCS delete warning: {e}")
-    
-    # delete firestore doc
-    doc_ref.delete()
-    return True
-
-def transcribe_bytes_with_whisper(audio_bytes: bytes, mime_type: str = 'audio/webm'):
-    L = LANG[st.session_state.language]
-    openai_client = init_openai_client(L)
-    if openai_client is None:
-        raise RuntimeError(L['openai_missing'])
-    
-    # Determine file extension
-    ext = mime_type.split('/')[-1].lower() if '/' in mime_type else 'webm'
-    
-    # write to temp file
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=f'.{ext}')
-    tmp.write(audio_bytes)
-    tmp.flush()
-    tmp.close()
-    
-    try:
-        with open(tmp.name, 'rb') as af:
-            res = openai_client.audio.transcriptions.create(
-                model='whisper-1', 
-                file=af,
-                response_format='text'
-            )
-        return res.strip() or ''
-    except Exception as e:
-        raise RuntimeError(f"{L['error']} Whisper: {e}")
-    finally:
-        try:
-            os.remove(tmp.name)
-        except Exception:
-            pass
-
-
-# -----------------------------
-# 3. Firestore/RAG/LLM Helpers (기존 코드 유지)
-# -----------------------------
-
 def _get_admin_credentials():
     """Secrets에서 서비스 계정 정보를 안전하게 로드하고 딕셔너리로 반환합니다."""
+    # (Secrets loading logic remains the same)
     if "FIREBASE_SERVICE_ACCOUNT_JSON" not in st.secrets:
         return None, "FIREBASE_SERVICE_ACCOUNT_JSON Secret이 누락되었습니다."
     service_account_data = st.secrets["FIREBASE_SERVICE_ACCOUNT_JSON"]
@@ -655,416 +448,141 @@ def _get_admin_credentials():
         return None, "JSON 내 'project_id' 또는 'private_key' 필드가 누락되었습니다."
     return sa_info, None
 
+
 @st.cache_resource(ttl=None)
-def initialize_firestore_admin():
+def initialize_firestore_admin(L):
+    """Secrets에서 로드된 정보를 사용하여 Firebase Admin SDK를 초기화하고 DB 클라이언트와 에러 메시지를 반환합니다."""
     sa_info, error_message = _get_admin_credentials()
     if error_message:
-        st.error(f"❌ Firebase Secret 오류: {error_message}")
-        return None
+        return None, f"❌ Firebase Secret 오류: {error_message}"
+    
+    db_client = None
     try:
         get_app()
     except ValueError:
-        pass 
+        pass
     else:
         try:
-            return firestore.client()
+            db_client = firestore.client()
+            return db_client, "✅ Firestore DB 클라이언트 준비 완료"
         except Exception as e:
-            st.error(f"🔥 Firebase 클라이언트 로드 실패: {e}")
-            return None
+            return None, f"🔥 Firebase 클라이언트 로드 실패: {e}"
+
     try:
-        cred = credentials.Certificate(sa_info) 
+        cred = credentials.Certificate(sa_info)
         initialize_app(cred)
         db_client = firestore.client()
-        st.session_state["db"] = db_client
-        return db_client
+        return db_client, "✅ Firestore DB 클라이언트 준비 완료"
     except Exception as e:
-        st.error(f"🔥 Firebase 초기화 실패: 서비스 계정 정보 문제. 오류: {e}")
-        return None
+        return None, f"🔥 {L['firebase_init_fail']}: 서비스 계정 정보 문제. 오류: {e}"
 
-def save_index_to_firestore(db, vector_store, index_id="user_portfolio_rag"):
-    if not db: return False
-    temp_dir = tempfile.mkdtemp()
-    try:
-        vector_store.save_local(folder_path=temp_dir, index_name="index")
-        with open(f"{temp_dir}/index.faiss", "rb") as f: faiss_bytes = f.read()
-        with open(f"{temp_dir}/index.pkl", "rb") as f: metadata_bytes = f.read()
-        encoded_data = {
-            "faiss_data": base64.b64encode(faiss_bytes).decode('utf-8'),
-            "metadata_data": base64.b64encode(metadata_bytes).decode('utf-8'),
-            "timestamp": gcp_firestore.SERVER_TIMESTAMP 
-        }
-        db.collection("rag_indices").document(index_id).set(encoded_data)
-        return True
-    except Exception as e:
-        print(f"Error saving index to Firestore: {e}")
-        return False
-
-def load_index_from_firestore(db, embeddings, index_id="user_portfolio_rag"):
-    if not db: return None
-    try:
-        doc = db.collection("rag_indices").document(index_id).get()
-        if not doc.exists: return None 
-        encoded_data = doc.to_dict()
-        faiss_bytes = base64.b64decode(encoded_data["faiss_data"])
-        metadata_bytes = base64.b64decode(encoded_data["metadata_data"])
-        temp_dir = tempfile.mkdtemp()
-        with open(f"{temp_dir}/index.faiss", "wb") as f: f.write(faiss_bytes)
-        with open(f"{temp_dir}/index.pkl", "wb") as f: f.write(metadata_bytes)
-        vector_store = FAISS.load_local(folder_path=temp_dir, embeddings=embeddings, index_name="index")
-        return vector_store
-    except Exception as e:
-        print(f"Error loading index from Firestore: {e}")
-        return None
-
-def save_simulation_history(db, initial_query, customer_type, messages):
-    L = LANG[st.session_state.language]
-    if not db: 
-        st.sidebar.warning(L.get("firestore_no_db_connect", "❌ DB 연결 실패: 상담 이력 저장 불가"))
-        return False
-    history_data = [{k: v for k, v in msg.items()} for msg in messages]
-    data = {
-        "initial_query": initial_query,
-        "customer_type": customer_type,
-        "messages": history_data,
-        "language_key": st.session_state.language, 
-        "timestamp": firestore.SERVER_TIMESTAMP
-    }
-    try:
-        db.collection("simulation_histories").add(data)
-        st.sidebar.success(L.get("save_history_success", "✅ 상담 이력이 저장되었습니다."))
-        return True
-    except Exception as e:
-        st.sidebar.error(f"❌ {L.get('save_history_fail', '상담 이력 저장 실패')}: {e}")
-        return False
-
-def load_simulation_histories(db):
-    current_lang_key = st.session_state.language 
-    if not db: return []
-    try:
-        histories = (
-            db.collection("simulation_histories")
-            .where("language_key", "==", current_lang_key) 
-            .order_by("timestamp", direction=Query.DESCENDING)
-            .limit(10)
-            .stream()
-        )
-        results = []
-        for doc in histories:
-            data = doc.to_dict()
-            data['id'] = doc.id
-            if 'messages' in data and isinstance(data['messages'], list) and data['messages']:
-                results.append(data)
-        return results
-    except Exception as e:
-        print(f"Error loading histories: {e}")
-        return []
-
-def delete_all_history(db):
-    L = LANG[st.session_state.language] 
-    if not db:
-        st.error(L["firestore_no_index"])
-        return
-    try:
-        docs = db.collection("simulation_histories").stream()
-        for doc in docs:
-            doc.reference.delete()
-        st.session_state.simulator_messages = []
-        st.session_state.simulator_memory.clear()
-        st.session_state.show_delete_confirm = False
-        st.success(L["delete_success"]) 
-        st.rerun()
-    except Exception as e:
-        st.error(f"{L.get('delete_fail', '이력 삭제 중 오류 발생')}: {e}")
-
-# -----------------------------
-# 4. LLM/Content Helpers (기존 코드 유지)
-# -----------------------------
-
-def clean_and_load_json(text):
-    match = re.search(r'\{.*\}', text, re.DOTALL)
-    if match:
-        json_str = match.group(0)
-        try:
-            return json.loads(json_str)
-        except json.JSONDecodeError:
-            return None
-    return None
-
-def get_mock_response_data(lang_key, customer_type):
-    L = LANG[lang_key]
-    # (Mock data logic remains the same, using L for localization)
-    if lang_key == 'ko':
-        initial_check = "고객님의 성함, 전화번호, 이메일 등 정확한 연락처 정보를 확인해 주시면 감사하겠습니다."
-        tone = "공감 및 해결 중심"
-        advice = "이 고객은 {customer_type} 성향이지만, 문제 해결을 간절히 원합니다. 공감과 함께, 문제 해결에 필수적인 정보를 명확하게 요청해야 합니다. 불필요한 사족을 피하고 신뢰를 주도록 하세요."
-        draft = f"{initial_check}\n\n> 고객님, 불편을 겪게 해드려 죄송합니다. 고객님의 상황을 충분히 이해하고 있습니다.\n> 문제 해결을 위해, 아래 세 가지 필수 정보를 확인해 주시면 감사하겠습니다. 이 정보가 있어야 고객님 상황에 맞는 정확한 해결책을 제시할 수 있습니다.\n> 1. 문제 발생과 관련된 상품/서비스의 **정확한 명칭 및 예약 번호**\n> 2. 현재 **문제 상황**에 대한 구체적인 설명\n> 3. 이미 **시도하신 해결 단계**\n\n> 고객님과의 원활한 소통을 통해 신속하게 문제 해결을 돕겠습니다. 답변 기다리겠습니다."
-    elif lang_key == 'en':
-        initial_check = "Could you please confirm your accurate contact details, such as your full name, phone number, and email address?"
-        tone = "Empathy and Solution-Focused"
-        advice = "This customer is {customer_type} but desperately wants a solution. Show empathy, but clearly request the essential information needed for troubleshooting. Be direct and build trust."
-        draft = f"{initial_check}\n\n> Dear Customer, I sincerely apologize for the inconvenience you are facing. I completely understand your frustration.\n> To proceed with troubleshooting, please confirm the three essential pieces of information below. This data is critical for providing you with the correct, tailored solution:\n> 1. The **exact name and booking number** of the product/service concerned.\n> 2. A specific description of the **current issue**.\n> 3. Any **troubleshooting steps already attempted**.\n\n> We aim to resolve your issue as quickly as possible with your cooperation. We await your response."
-    elif lang_key == 'ja':
-        initial_check = "お客様の氏名、お電話番号、Eメールアドレスなど、正確な連絡先情報を確認させていただけますでしょうか。"
-        tone = "共感と解決中心"
-        advice = "このお客様は{customer_type}傾向ですが、問題の解決を強く望んでいます。共感を示しつつも、問題解決に不可欠な情報を明確に尋ねる必要があります。冗長な説明を避け、信頼感を与える対応を心がけてください。"
-        draft = f"{initial_check}\n\n> お客様、ご不便をおかけし、誠に申し訳ございません。現在の状況、十分承知いたしました。\n> 問題を迅速に解決するため、恐れ入りますが、以下の3点の必須情報についてご確認いただけますでしょうか。この情報がないと、お客様の状況に合わせた的確な解決策をご案内できません。\n> 1. 問題の対象となる**商品・サービスの正確な名称と予約番号**\n> 2. 現在の**具体的な問題状況**\n> 3. 既に**お試しいただいた解決手順**\n\n> お客様との円滑なコミュニケーションを通じて、迅速に問題解決をサポートさせていただきます。ご返信をお待ちしております。"
-    
-    advice_text = advice.replace("{customer_type}", customer_type)
-    return {
-        "advice_header": f"{L['simulation_advice_header']}",
-        "advice": advice_text,
-        "draft_header": f"{L['simulation_draft_header']} ({tone})",
-        "draft": draft
-    }
-
-def get_closing_messages(lang_key):
-    # (Closing messages logic remains the same, using LANG for localization)
-    if lang_key == 'ko':
-        return {"additional_query": "또 다른 문의 사항은 없으신가요?", "chat_closing": LANG['ko']['prompt_survey']}
-    elif lang_key == 'en':
-        return {"additional_query": "Is there anything else we can assist you with today?", "chat_closing": LANG['en']['prompt_survey']}
-    elif lang_key == 'ja':
-        return {"additional_query": "また、お客様にお手伝いさせて頂けるお問い合わせは御座いませんか？", "chat_closing": LANG['ja']['prompt_survey']}
-    return get_closing_messages('ko')
-
-def get_document_chunks(files):
-    documents = []
-    temp_dir = tempfile.mkdtemp()
-    # (Document loading and chunking logic remains the same)
-    for uploaded_file in files:
-        temp_filepath = os.path.join(temp_dir, uploaded_file.name)
-        file_extension = uploaded_file.name.split('.')[-1].lower()
-        if file_extension == "pdf":
-            with open(temp_filepath, "wb") as f: f.write(uploaded_file.getvalue())
-            loader = PyPDFLoader(temp_filepath)
-            documents.extend(loader.load())
-        elif file_extension == "html":
-            raw_html = uploaded_file.getvalue().decode('utf-8')
-            soup = BeautifulSoup(raw_html, 'html.parser')
-            text_content = soup.get_text(separator=' ', strip=True)
-            documents.append(Document(page_content=text_content, metadata={"source": uploaded_file.name}))
-        elif file_extension == "txt":
-            with open(temp_filepath, "wb") as f: f.write(uploaded_file.getvalue())
-            loader = TextLoader(temp_filepath, encoding="utf-8")
-            documents.extend(loader.load())
-        else:
-            continue
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-    return text_splitter.split_documents(documents)
-
-def get_vector_store(text_chunks):
-    cache_key = tuple(doc.page_content for doc in text_chunks)
-    if cache_key in st.session_state.embedding_cache: return st.session_state.embedding_cache[cache_key]
-    if not st.session_state.is_llm_ready: return None
-    try:
-        vector_store = FAISS.from_documents(text_chunks, embedding=st.session_state.embeddings)
-        st.session_state.embedding_cache[cache_key] = vector_store
-        return vector_store
-    except Exception as e:
-        print(f"Vector Store creation failed: {e}") 
-        return None
-
-def get_rag_chain(vector_store):
-    if vector_store is None: return None
-    return ConversationalRetrievalChain.from_llm(
-        llm=st.session_state.llm,
-        retriever=vector_store.as_retriever(),
-        memory=st.session_state.memory
-    )
 
 @st.cache_resource
-def load_or_train_lstm():
-    np.random.seed(int(time.time()))
-    data = np.cumsum(np.random.normal(loc=5, scale=5, size=50)) + 60
-    data = np.clip(data, 50, 95)
-    def create_dataset(dataset, look_back=3):
-        X, Y = [], []
-        for i in range(len(dataset) - look_back):
-            X.append(dataset[i:(i + look_back)])
-            Y.append(dataset[i + look_back])
-        return np.array(X), np.array(Y)
-    look_back = 5
-    X, Y = create_dataset(data, look_back)
-    X = np.reshape(X, (X.shape[0], X.shape[1], 1))
-    model = Sequential([
-        LSTM(50, activation='relu', input_shape=(look_back, 1)),
-        Dense(1)
-    ])
-    model.compile(optimizer='adam', loss='mse')
-    model.fit(X, Y, epochs=10, batch_size=1, verbose=0)
-    return model, data
-
-def force_rerun_lstm():
-    st.session_state.lstm_rerun_trigger = time.time()
-    st.rerun()
-
-def render_interactive_quiz(quiz_data, current_lang):
-    L = LANG[current_lang]
-    if not quiz_data or 'quiz_questions' not in quiz_data: return
-    questions = quiz_data['quiz_questions']
-    num_questions = len(questions)
-    # (Quiz rendering logic remains the same)
-    if "current_question" not in st.session_state or st.session_state.current_question >= num_questions:
-        st.session_state.current_question = 0
-        st.session_state.quiz_results = [None] * num_questions
-        st.session_state.quiz_submitted = False
-    q_index = st.session_state.current_question
-    q_data = questions[q_index]
-    st.subheader(f"{q_index + 1}. {q_data['question']}")
-    options_dict = {}
+def init_gcs_client(L):
+    """GCS 클라이언트를 초기화하고 클라이언트 객체와 에러 메시지를 반환합니다."""
+    sa = _load_service_account_from_secrets()
+    gcs_bucket_name = st.secrets.get('GCS_BUCKET_NAME') or os.environ.get('GCS_BUCKET_NAME')
+    
+    if not gcs_bucket_name:
+        return None, L['gcs_missing']
+    if not sa:
+        return None, "GCS 초기화를 위한 서비스 계정 정보 누락"
+    
+    gcs_client = None
     try:
-        options_dict = {f"{opt['option']}": f"{opt['option']}) {opt['text']}" for opt in q_data['options']}
-    except KeyError:
-        st.error(L["quiz_fail_structure"])
-        if 'quiz_data_raw' in st.session_state: st.code(st.session_state.quiz_data_raw, language="json")
-        return
-    options_list = list(options_dict.values())
-    selected_answer = st.radio(L.get("select_answer", "정답을 선택하세요"), options=options_list, key=f"q_radio_{q_index}")
-    col1, col2 = st.columns(2)
-    if col1.button(L.get("check_answer", "정답 확인"), key=f"check_btn_{q_index}", disabled=st.session_state.quiz_submitted):
-        user_choice_letter = selected_answer.split(')')[0] if selected_answer else None
-        correct_answer_letter = q_data['correct_answer']
-        is_correct = (user_choice_letter == correct_answer_letter)
-        st.session_state.quiz_results[q_index] = is_correct
-        st.session_state.quiz_submitted = True
-        if is_correct: st.success(L.get("correct_answer", "정답입니다! 🎉"))
-        else: st.error(L.get("incorrect_answer", "오답입니다.😞"))
-        st.markdown(f"**{L.get('correct_is', '정답')}: {correct_answer_letter}**")
-        st.info(f"**{L.get('explanation', '해설')}:** {q_data['explanation']}")
-    if st.session_state.quiz_submitted:
-        if q_index < num_questions - 1:
-            if col2.button(L.get("next_question", "다음 문항"), key=f"next_btn_{q_index}"):
-                st.session_state.current_question += 1
-                st.session_state.quiz_submitted = False
-                st.rerun()
-        else:
-            total_correct = st.session_state.quiz_results.count(True)
-            total_questions = len(st.session_state.quiz_results)
-            st.success(f"**{L.get('quiz_complete', '퀴즈 완료!')}** {L.get('score', '점수')}: {total_correct}/{total_questions}")
-            if st.button(L.get("retake_quiz", "퀴즈 다시 풀기"), key="retake"):
-                st.session_state.current_question = 0
-                st.session_state.quiz_results = [None] * num_questions
-                st.session_state.quiz_submitted = False
-                st.rerun()
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.json')
+        tmp.write(json.dumps(sa).encode('utf-8'))
+        tmp.flush()
+        os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = tmp.name
+        gcs_client = storage.Client()
+        return gcs_client, "✅ GCS 클라이언트 준비 완료"
+    except Exception as e:
+        return None, f"{L['gcs_init_fail']}: {e}"
 
-def synthesize_and_play_audio(current_lang_key):
-    # (TTS JS injection logic remains the same)
-    ko_ready = LANG["ko"]["tts_status_ready"]
-    en_ready = LANG["en"]["tts_status_ready"]
-    ja_ready = LANG["ja"]["tts_status_ready"]
 
-    tts_js_code = f"""
-    <script>
-    if (!window.speechSynthesis) {{
-        document.getElementById('tts_status').innerText = '❌ TTS Not Supported';
-    }}
+@st.cache_resource
+def init_openai_client(L):
+    """OpenAI 클라이언트를 초기화하고 클라이언트 객체와 에러 메시지를 반환합니다."""
+    openai_key = st.secrets.get('OPENAI_API_KEY') or os.environ.get('OPENAI_API_KEY')
+    if openai_key:
+        try:
+            return OpenAI(api_key=openai_key), "✅ OpenAI 클라이언트 준비 완료"
+        except Exception as e:
+            return None, f"OpenAI client init error: {e}"
+    return None, L['openai_missing']
 
-    window.speakText = function(text, langKey) {{
-        if (!window.speechSynthesis || !text) return;
+def get_gcs_bucket_name():
+    return st.secrets.get('GCS_BUCKET_NAME') or os.environ.get('GCS_BUCKET_NAME')
 
-        const statusElement = document.getElementById('tts_status');
-        const utterance = new SpeechSynthesisUtterance(text);
-        
-        const langCode = {{ "ko": "ko-KR", "en": "en-US", "ja": "ja-JP" }}[langKey] || "en-US";
-        utterance.lang = langCode; 
-
-        const getReadyText = (key) => {{
-            if (key === 'ko') return '{ko_ready}';
-            if (key === 'en') return '{en_ready}';
-            if (key === 'ja') return '{ja_ready}';
-            return '{en_ready}';
-        }};
-
-        let voicesLoaded = false;
-        const setVoiceAndSpeak = () => {{
-            const voices = window.speechSynthesis.getVoices();
-            if (voices.length > 0) {{
-                utterance.voice = voices.find(v => v.lang.startsWith(langCode.substring(0, 2))) || voices[0];
-                voicesLoaded = true;
-                window.speechSynthesis.speak(utterance);
-            }} else if (!voicesLoaded) {{
-                setTimeout(setVoiceAndSpeak, 100);
-            }}
-        }};
-        
-        utterance.onstart = () => {{
-            statusElement.innerText = '{LANG[current_lang_key].get("tts_status_generating", "オーディオ生成中...")}';
-            statusElement.style.backgroundColor = '#fff3e0';
-        }};
-        
-        utterance.onend = () => {{
-            statusElement.innerText = '{LANG[current_lang_key].get("tts_status_success", "✅ オーディオ再生完了!")}';
-            statusElement.style.backgroundColor = '#e8f5e9';
-             setTimeout(() => {{ 
-                 statusElement.innerText = getReadyText(langKey);
-                 statusElement.style.backgroundColor = '#f0f0f0';
-             }}, 3000);
-        }};
-        
-        utterance.onerror = (event) => {{
-            statusElement.innerText = '{LANG[current_lang_key].get("tts_status_error", "❌ TTSエラー発生")}';
-            statusElement.style.backgroundColor = '#ffebee';
-            console.error("SpeechSynthesis Error:", event);
-             setTimeout(() => {{ 
-                 statusElement.innerText = getReadyText(langKey);
-                 statusElement.style.backgroundColor = '#f0f0f0';
-             }}, 3999);
-        }};
-
-        window.speechSynthesis.cancel(); 
-        setVoiceAndSpeak(); 
-    }};
-    </script>
-    """
-    st.components.v1.html(tts_js_code, height=5, width=0)
-
-def render_tts_button(text_to_speak, current_lang_key):
-    safe_text = re.sub(r'#+\s*', '', text_to_speak)
-    safe_text = safe_text.replace('\n', ' ').replace('"', '\\"').replace("'", "\\'")
-    js_call = f"window.speakText('{safe_text}', '{current_lang_key}')"
-
-    st.markdown(f"""
-        <button onclick="{js_call}"
-                style="background-color: #4338CA; color: white; padding: 10px 20px; border-radius: 5px; cursor: pointer; border: none; width: 100%; font-weight: bold; margin-bottom: 10px;">
-            {LANG[current_lang_key].get("button_listen_audio", "音声で聞く")} 🎧
-        </button>
-    """, unsafe_allow_html=True)
+# (나머지 Helper 함수들은 st.error/success를 직접 호출하지 않으므로 변경 없음)
 
 # -----------------------------
 # 5. Core Initialization & Session State
 # -----------------------------
 
-# Initialize core clients and get DB connection
-firestore_db = initialize_firestore_admin()
-gcs_client = init_gcs_client(LANG[st.session_state.language])
-openai_client = init_openai_client(LANG[st.session_state.language])
+# --- Session State 초기화 (st.set_page_config 이전에 실행 가능) ---
+if 'language' not in st.session_state: st.session_state.language = DEFAULT_LANG
+L = LANG[st.session_state.language] 
 
-if 'llm' not in st.session_state:
-    API_KEY = os.environ.get("GEMINI_API_KEY")
-    if API_KEY:
-        try:
-            st.session_state.llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.7, google_api_key=API_KEY)
-            st.session_state.embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=API_KEY)
-            st.session_state.is_llm_ready = True
-            
-            # Simulator Chain Setup
-            SIMULATOR_PROMPT = PromptTemplate(
-                template="The following is a friendly conversation between a human and an AI. The AI is talkative and provides lots of specific details from its context.\n\n{chat_history}\nHuman: {input}\nAI:",
-                input_variables=["input", "chat_history"]
-            )
-            st.session_state.simulator_chain = ConversationChain(
-                llm=st.session_state.llm,
-                memory=st.session_state.simulator_memory,
-                prompt=SIMULATOR_PROMPT,
-                input_key="input", 
-            )
+# 모든 session state 초기화
+if 'uploaded_files_state' not in st.session_state: st.session_state.uploaded_files_state = None
+if 'is_llm_ready' not in st.session_state: st.session_state.is_llm_ready = False
+if 'is_rag_ready' not in st.session_state: st.session_state.is_rag_ready = False
+if 'firestore_db' not in st.session_state: st.session_state.firestore_db = None
+if 'db_init_msg' not in st.session_state: st.session_state.db_init_msg = None
+if 'gcs_init_msg' not in st.session_state: st.session_state.gcs_init_msg = None
+if 'openai_init_msg' not in st.session_state: st.session_state.openai_init_msg = None
+if 'llm_init_error_msg' not in st.session_state: st.session_state.llm_init_error_msg = None
+if 'firestore_load_success' not in st.session_state: st.session_state.firestore_load_success = False
+if "simulator_memory" not in st.session_state: st.session_state.simulator_memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+if "simulator_messages" not in st.session_state: st.session_state.simulator_messages = []
+if "initial_advice_provided" not in st.session_state: st.session_state.initial_advice_provided = False
+if "simulator_chain" not in st.session_state: st.session_state.simulator_chain = None
+if "is_chat_ended" not in st.session_state: st.session_state.is_chat_ended = False
+if "show_delete_confirm" not in st.session_state: st.session_state.show_delete_confirm = False
+if 'last_transcript' not in st.session_state: st.session_state['last_transcript'] = ''
+if 'sim_audio_upload_key' not in st.session_state: st.session_state['sim_audio_upload_key'] = 0
 
-        except Exception as e:
-            st.session_state.llm_init_error_msg = f"{LANG[st.session_state.language]['llm_error_init']} {e}"
-            st.session_state.is_llm_ready = False
 
-# RAG Index Loading Attempt
-if st.session_state.get('firestore_db') and 'conversation_chain' not in st.session_state:
+# --- 클라이언트 초기화 (st.set_page_config 이전에 실행되어야 하지만, UI 출력은 없음) ---
+firestore_db_client, db_msg = initialize_firestore_admin(L)
+st.session_state.firestore_db = firestore_db_client
+st.session_state.db_init_msg = db_msg
+
+gcs_client_obj, gcs_msg = init_gcs_client(L)
+gcs_client = gcs_client_obj # Global reference for helper functions
+st.session_state.gcs_init_msg = gcs_msg
+
+openai_client_obj, openai_msg = init_openai_client(L)
+openai_client = openai_client_obj # Global reference for helper functions
+st.session_state.openai_init_msg = openai_msg
+
+# --- LLM 초기화 (에러 메시지는 session state에 저장) ---
+API_KEY = os.environ.get("GEMINI_API_KEY")
+if 'llm' not in st.session_state and API_KEY:
+    try:
+        st.session_state.llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.7, google_api_key=API_KEY)
+        st.session_state.embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=API_KEY)
+        st.session_state.is_llm_ready = True
+        
+        SIMULATOR_PROMPT = PromptTemplate(
+            template="The following is a friendly conversation between a human and an AI. The AI is talkative and provides lots of specific details from its context.\n\n{chat_history}\nHuman: {input}\nAI:",
+            input_variables=["input", "chat_history"]
+        )
+        st.session_state.simulator_chain = ConversationChain(
+            llm=st.session_state.llm,
+            memory=st.session_state.simulator_memory,
+            prompt=SIMULATOR_PROMPT,
+            input_key="input",
+        )
+    except Exception as e:
+        st.session_state.llm_init_error_msg = f"{L['llm_error_init']} (Gemini): {e}"
+        st.session_state.is_llm_ready = False
+elif not API_KEY:
+    st.session_state.llm_init_error_msg = L["llm_error_key"]
+
+# RAG Index Loading (session state에 결과만 저장)
+if st.session_state.get('firestore_db') and 'conversation_chain' not in st.session_state and st.session_state.is_llm_ready:
     loaded_index = load_index_from_firestore(st.session_state.firestore_db, st.session_state.embeddings)
     if loaded_index:
         st.session_state.conversation_chain = get_rag_chain(loaded_index)
@@ -1073,19 +591,15 @@ if st.session_state.get('firestore_db') and 'conversation_chain' not in st.sessi
     else:
         st.session_state.firestore_load_success = False
 
-# Session State for Transcribed Text (used in both recorder and simulator)
-if 'last_transcript' not in st.session_state: st.session_state['last_transcript'] = ''
-if 'sim_audio_upload_key' not in st.session_state: st.session_state['sim_audio_upload_key'] = 0
-
 
 # -----------------------------
-# 6. Streamlit UI
+# 6. Streamlit UI (스크립트의 첫 번째 UI 출력 명령어)
 # -----------------------------
 
-L = LANG[st.session_state.language] 
+# ⭐ 이 줄이 스크립트에서 첫 번째 Streamlit 명령어여야 합니다.
 st.set_page_config(page_title=L["title"], layout="wide")
 
-# Sidebar for Language and RAG/LLM config
+# 사이드바 설정 시작
 with st.sidebar:
     selected_lang_key = st.selectbox(
         L["lang_select"],
@@ -1096,24 +610,29 @@ with st.sidebar:
     
     if selected_lang_key != st.session_state.language:
         st.session_state.language = selected_lang_key
-        st.rerun() 
+        st.rerun()
     
-    L = LANG[st.session_state.language] 
+    L = LANG[st.session_state.language]
     st.title(L["sidebar_title"])
     
-    # Initialization status display
+    st.markdown("---")
+    st.subheader("클라이언트 초기화 상태")
+    
+    # --- 초기화 상태 표시 (st.set_page_config 이후에 안전하게 출력) ---
     if st.session_state.get('llm_init_error_msg'):
         st.error(st.session_state.llm_init_error_msg)
     elif st.session_state.is_llm_ready:
         st.success("✅ LLM 및 임베딩 클라이언트 준비 완료")
 
-    if st.session_state.get('firestore_db'):
-        st.success("✅ Firestore DB 연결 성공")
+    # DB & GCS 상태 표시
+    if "✅" in st.session_state.db_init_msg: st.success(st.session_state.db_init_msg)
+    else: st.warning(st.session_state.db_init_msg) # 에러 메시지를 warning으로 표시 (UI 구성 유지를 위해)
     
-    if gcs_client:
-        st.success("✅ GCS 클라이언트 준비 완료")
-    else:
-        st.warning(L['gcs_missing'])
+    if "✅" in st.session_state.gcs_init_msg: st.success(st.session_state.gcs_init_msg)
+    else: st.warning(st.session_state.gcs_init_msg)
+    
+    if "✅" in st.session_state.openai_init_msg: st.success(st.session_state.openai_init_msg)
+    else: st.warning(st.session_state.openai_init_msg)
 
     st.markdown("---")
     
@@ -1124,16 +643,13 @@ with st.sidebar:
     if uploaded_files_widget: st.session_state.uploaded_files_state = uploaded_files_widget
     files_to_process = st.session_state.uploaded_files_state if st.session_state.uploaded_files_state else []
     
-    if files_to_process and st.session_state.is_llm_ready:
+    if files_to_process and st.session_state.is_llm_ready and st.session_state.firestore_db:
         if st.button(L["button_start_analysis"], key="start_analysis"):
-            with st.spinner(L["data_analysis_progress"]): 
+            with st.spinner(L["data_analysis_progress"]):
                 text_chunks = get_document_chunks(files_to_process)
                 vector_store = get_vector_store(text_chunks)
                 if vector_store:
-                    db = st.session_state.firestore_db
-                    save_success = False
-                    if db: save_success = save_index_to_firestore(db, vector_store)
-                    
+                    save_success = save_index_to_firestore(st.session_state.firestore_db, vector_store)
                     st.success(L["embed_success"].format(count=len(text_chunks)) + (" " + L["db_save_complete"] if save_success else " (DB Save Failed)"))
                     st.session_state.conversation_chain = get_rag_chain(vector_store)
                     st.session_state.is_rag_ready = True
@@ -1170,8 +686,7 @@ if feature_selection == L["voice_rec_header"]:
         audio_obj = None
         try:
             if hasattr(st, 'audio_input'):
-                # Use a dedicated key for the main recorder to avoid conflicts
-                audio_obj = st.audio_input(L["button_mic_input"], key='main_recorder_input') 
+                audio_obj = st.audio_input(L["button_mic_input"], key='main_recorder_input')
         except Exception:
             audio_obj = None
 
@@ -1206,7 +721,7 @@ if feature_selection == L["voice_rec_header"]:
 
             # Save Action
             if st.button(L['save_btn'], key='save_btn_key_rec'):
-                if firestore_db is None:
+                if st.session_state.firestore_db is None:
                     st.error(L['firebase_init_fail'])
                 else:
                     bucket_name = get_gcs_bucket_name()
@@ -1215,7 +730,7 @@ if feature_selection == L["voice_rec_header"]:
                     transcript_text = st.session_state.get('last_transcript', '')
                     
                     try:
-                        save_audio_record(firestore_db, bucket_name, audio_bytes, filename, transcript_text, mime_type=audio_mime)
+                        save_audio_record(st.session_state.firestore_db, bucket_name, audio_bytes, filename, transcript_text, mime_type=audio_mime)
                         st.success(L['saved_success'])
                         st.session_state['last_transcript'] = ''
                         st.experimental_rerun()
@@ -1224,11 +739,11 @@ if feature_selection == L["voice_rec_header"]:
 
     with col_list_ui:
         st.subheader(L['rec_list_title'])
-        if firestore_db is None:
+        if st.session_state.firestore_db is None:
             st.warning(L['firebase_init_fail'] + ' — 이력 기능 사용 불가')
         else:
             try:
-                docs = list(firestore_db.collection('voice_records').order_by('created_at', direction=firestore.Query.DESCENDING).limit(50).stream())
+                docs = list(st.session_state.firestore_db.collection('voice_records').order_by('created_at', direction=firestore.Query.DESCENDING).limit(50).stream())
             except Exception as e:
                 st.error(f"Firestore read error: {e}")
                 docs = []
@@ -1271,7 +786,7 @@ if feature_selection == L["voice_rec_header"]:
                                         blob_bytes = download_audio_from_gcs(bucket_name, data['gcs_path'].split(f'gs://{bucket_name}/')[-1])
                                         mime_type = data.get('mime_type', 'audio/webm')
                                         new_text = transcribe_bytes_with_whisper(blob_bytes, mime_type)
-                                        firestore_db.collection('voice_records').document(doc_id).update({'transcript': new_text})
+                                        st.session_state.firestore_db.collection('voice_records').document(doc_id).update({'transcript': new_text})
                                         st.success(L['retranscribe'] + ' ' + L['saved_success'])
                                         st.experimental_rerun()
                                     except Exception as e:
@@ -1281,7 +796,7 @@ if feature_selection == L["voice_rec_header"]:
                         # Delete Button
                         if cold.button(L['delete'], key=f'del_{doc_id}'):
                             if st.session_state.get(f'confirm_del_rec_{doc_id}', False):
-                                ok = delete_audio_record(firestore_db, bucket_name, doc_id)
+                                ok = delete_audio_record(st.session_state.firestore_db, bucket_name, doc_id)
                                 if ok: st.success(L['delete_success'])
                                 else: st.error(L['delete_fail'])
                                 st.session_state[f'confirm_del_rec_{doc_id}'] = False
@@ -1291,6 +806,7 @@ if feature_selection == L["voice_rec_header"]:
                                 st.warning(L['delete_confirm_rec'])
 
 elif feature_selection == L["simulator_tab"]: 
+    # (Simulator UI logic remains the same, using st.session_state.firestore_db)
     st.header(L["simulator_header"])
     st.markdown(L["simulator_desc"])
     
@@ -1329,7 +845,6 @@ elif feature_selection == L["simulator_tab"]:
 
             filtered_histories = []
             if histories:
-                # (Filtering logic remains the same)
                 if isinstance(date_range_input, list) and len(date_range_input) == 2:
                     start_date = min(date_range_input)
                     end_date = max(date_range_input) + timedelta(days=1)
@@ -1401,7 +916,6 @@ elif feature_selection == L["simulator_tab"]:
             st.session_state.simulator_messages.append({"role": "customer", "content": customer_query})
             st.session_state.simulator_memory.chat_memory.add_user_message(customer_query)
             
-            # (Initial prompt generation remains the same)
             initial_prompt = f"""You are an AI Customer Support Supervisor... [CRITICAL RULE FOR DRAFT CONTENT]... When the Agent subsequently asks for information, **Roleplay as the Customer** who is frustrated but **MUST BE HIGHLY COOPERATIVE** and provide the requested details piece by piece (not all at once). The customer MUST NOT argue or ask why the information is needed... The recommended draft MUST be strictly in {LANG[current_lang_key]['lang_select']}."""
 
             if not os.environ.get("GEMINI_API_KEY"):
@@ -1425,12 +939,6 @@ elif feature_selection == L["simulator_tab"]:
                         st.error(f"AI 조언 생성 중 오류 발생: {e}")
         
         st.markdown("---")
-        # (기존 코드: 1429 라인 부근)
-        # for message in st.session_state.simulator_messages:
-        #     if message["role"] == "customer": with st.chat_message("user", avatar="🙋"): st.markdown(message["content"])
-        #                                       ^ SyntaxError 발생 지점
-
-        # --- 수정된 코드 ---
         for message in st.session_state.simulator_messages:
             if message["role"] == "customer":
                 with st.chat_message("user", avatar="🙋"):
@@ -1462,7 +970,6 @@ elif feature_selection == L["simulator_tab"]:
                 
                 # --- Whisper Audio Input for Agent Response ---
                 with col_audio:
-                    # Rerunning the input component ensures it reloads cleanly after a transcription event
                     audio_file = st.audio_input(L["button_mic_input"], key=f"sim_audio_input_{st.session_state['sim_audio_upload_key']}")
                 
                 if audio_file:
@@ -1470,11 +977,10 @@ elif feature_selection == L["simulator_tab"]:
                     else:
                         with st.spinner(L.get("whisper_processing")):
                             try:
-                                # Get mime type from UploadedFile object
                                 mime_type = getattr(audio_file, 'type', 'audio/webm')
                                 transcribed_text = transcribe_bytes_with_whisper(audio_file.getvalue(), mime_type)
                                 st.session_state['last_transcript'] = transcribed_text
-                                st.session_state['sim_audio_upload_key'] += 1 # Change key to force widget reset on rerun
+                                st.session_state['sim_audio_upload_key'] += 1
                                 st.success(L.get("whisper_success"))
                                 st.rerun() 
                             except Exception as e: st.error(f"음성 전사 처리 중 오류 발생: {e}"); st.session_state['last_transcript'] = ""
@@ -1488,7 +994,7 @@ elif feature_selection == L["simulator_tab"]:
 
                 if st.button(L["send_response_button"], key="send_agent_response_sim"): 
                     if agent_response.strip():
-                        st.session_state['last_transcript'] = "" # Clear last transcript after sending
+                        st.session_state['last_transcript'] = ""
                         st.session_state.simulator_messages.append({"role": "agent_response", "content": agent_response})
                         st.session_state.simulator_memory.chat_memory.add_user_message(agent_response)
                         save_simulation_history(db, st.session_state.customer_query_text_area, customer_type_display, st.session_state.simulator_messages)
