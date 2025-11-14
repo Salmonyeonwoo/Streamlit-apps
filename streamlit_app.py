@@ -252,16 +252,17 @@ def transcribe_audio_with_whisper(audio_file, client, lang_key):
     
     if client is None:
         # OpenAI Key가 없는 경우 오류 메시지 반환
-        return L.get("whisper_client_error", "❌ 오류: Whisper API Client가 초기화되지 않았습니다. Secrets에 OPENAI_API_KEY를 설정했는지 확인하세요.")
+        return L.get("whisper_client_error", "❌ 오류: Whisper API Client가 초기화되지 않았습니다.")
     
     # UploadedFile 객체의 내용을 임시 파일에 기록
     temp_dir = tempfile.mkdtemp()
     temp_audio_path = "" # 초기화
     
     try:
-        # st.audio_input은 파일 이름이 없어 name 속성이 None일 수 있으므로 안전하게 처리
-        # Streamlit 1.38.0 기준으로 st.audio_input은 audio/wav MIME 타입의 BytesIO 객체를 반환하는 경우가 많음
-        mime_type = audio_file.type if audio_file.type else 'audio/wav'
+        # st.audio_input의 경우 파일 이름이 없어 name 속성이 None일 수 있음 (Streamlit 버전 1.38.0 가정)
+        # BytesIO 객체에서 MIME 타입 가져오기 시도
+        mime_type = audio_file.type if hasattr(audio_file, 'type') else 'audio/wav'
+        # 파일 확장자 추정
         file_extension = mime_type.split('/')[-1].lower() if '/' in mime_type else 'wav' 
         
         # Whisper가 지원하는 형식인지 확인 (st.audio_input은 보통 WAV/MP3/M4A 등을 반환)
@@ -901,7 +902,7 @@ LANG = {
         "response_generating": "応答生成中...", # ⭐ 다국어 키 추가
         "lstm_result_header": "達成度予測結果",
         "lstm_score_metric": "現在の予測達成度",
-        "lstm_score_info": "次のクイズの推定スコアは約 **{predicted_score:.1f}点**입니다。学習の成果を維持または向上させてください！",
+        "lstm_score_info": "次のクイズの推定スコアは約 **{predicted_score:.1f}点**です。学習の成果を維持または向上させてください！",
         "lstm_rerun_button": "新しい仮想データで予測",
 
         # ⭐ 시뮬레이터 관련 텍스트
@@ -947,12 +948,7 @@ LANG = {
         "deleting_history_progress": "履歴削除中...", # ⭐ 다국어 키 추가
         "search_history_label": "履歴キーワード検索", # ⭐ 다국어 키 추가
         "date_range_label": "日付範囲フィルター", # ⭐ 다국어 키 추가
-        "no_history_found": "検索条件に一致する履歴はありません。", # ⭐ 다국어 키 추가
-        "whisper_client_error": "❌ OpenAI Keyが設定されていないため、音声認識機能は使えません。", # ⭐ Whisper 오류 메시지 추가
-        "whisper_auth_error": "❌ Whisper API認証失敗: API Keyを確認してください。",
-        "whisper_format_error": "❌ 오류: サポートされていないオーディオ形式です。",
-        "whisper_processing": "音声ファイルをテキストに変換中...",
-        "whisper_success": "✅ 音声認識が完了しました！テキストボックスを確認してください。"
+        "no_history_found": "検索条件に一致する履歴はありません。" # ⭐ 다국어 키 추가
     }
 }
 
@@ -1350,6 +1346,11 @@ if feature_selection == L["simulator_tab"]:
             initial_prompt = f"""
             You are an AI Customer Support Supervisor. Your task is to provide expert guidance to a customer support agent.
             The customer sentiment is: {customer_type_display}.
+            The customer's initial inquiry is: "{customer_query}"
+            
+            Based on this, provide:
+            1. Crucial advice on the tone and strategy for dealing with this specific sentiment. 
+            2. A concise and compassionate recommended response draft.
             
             The recommended draft MUST be strictly in {LANG[current_lang_key]['lang_select']}.
             
@@ -1433,7 +1434,17 @@ if feature_selection == L["simulator_tab"]:
                 # --- ⭐ Whisper 오디오 전사 기능 추가 ---
                 col_audio, col_text_area = st.columns([1, 2])
                 
-                # 전사 결과 저장소 초기화 (audio_input 때문에 필요)
+                # OpenAI Client 초기화 (Secrets에서 키를 로드)
+                openai_key = st.secrets.get("OPENAI_API_KEY")
+                openai_client = None
+                if openai_key:
+                    try:
+                        # OpenAI Client 초기화 시도
+                        openai_client = OpenAI(api_key=openai_key)
+                    except Exception:
+                        openai_client = None
+
+                # 전사 결과 저장소 초기화
                 if 'transcribed_text' not in st.session_state:
                     st.session_state.transcribed_text = ""
                 
@@ -1457,13 +1468,13 @@ if feature_selection == L["simulator_tab"]:
                                 else:
                                     st.session_state.transcribed_text = transcribed_text
                                     st.success(L.get("whisper_success", "✅ 음성 전사 완료! 텍스트 창을 확인하세요."))
-                                    
-                                # st.audio_input은 파일 객체를 반환하므로, rerun을 통해 텍스트 영역에 값을 반영합니다.
+                                
                                 st.rerun() 
                                 
                             except Exception as e:
                                 st.error(f"음성 전사 처리 중 오류 발생: {e}")
                                 st.session_state.transcribed_text = ""
+
 
                 # st.text_area는 전사 결과를 기본값으로 사용
                 agent_response = col_text_area.text_area(
