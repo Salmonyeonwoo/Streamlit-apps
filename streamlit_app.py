@@ -223,6 +223,7 @@ def delete_all_history(db):
         # 세션 상태도 초기화
         st.session_state.simulator_messages = []
         st.session_state.simulator_memory.clear()
+        st.session_state.initial_advice_provided = False
         st.session_state.show_delete_confirm = False
         st.success(L["delete_success"]) # ⭐ 다국어 적용
         st.rerun()
@@ -246,55 +247,51 @@ def clean_and_load_json(text):
     return None
 
 # ⭐ Whisper API 연동 함수 (OpenAI Client 인스턴스를 인수로 받음)
-def transcribe_audio_with_whisper(audio_file, openai_client, lang_key):
+def transcribe_audio_with_whisper(audio_file, client):
     """Whisper API를 사용하여 오디오 파일을 텍스트로 전사합니다."""
-    if openai_client is None:
-        return LANG[lang_key].get("whisper_client_error", "오류: Whisper API Client가 초기화되지 않았습니다.")
+    L = LANG[st.session_state.language] # 현재 언어 키 로드
     
-    # 템포러리 디렉토리와 파일 경로 설정
+    # 1. OpenAI Client 초기화 확인
+    if client is None:
+        return L.get("whisper_client_error", "오류: Whisper API Client가 초기화되지 않았습니다. Secrets에 OPENAI_API_KEY를 설정했는지 확인하세요.")
+    
+    # 2. UploadedFile 객체의 내용을 임시 파일에 기록
     temp_dir = tempfile.mkdtemp()
-    temp_audio_path = os.path.join(temp_dir, "uploaded_audio") 
     
-    # Streamlit UploadedFile 객체의 내용을 임시 파일에 기록
     try:
-        # 파일 확장자 확인 및 추가 (Whisper가 지원하는 형식인지 확인)
+        # 파일 확장자 확인 (Whisper가 지원하는 형식인지 확인)
         file_extension = audio_file.name.split('.')[-1].lower()
         if file_extension not in ["mp3", "mp4", "mpeg", "mpga", "m4a", "wav", "webm"]:
-             return LANG[lang_key].get("whisper_format_error", f"오류: 지원하지 않는 오디오 형식 ({file_extension})입니다.")
+             return L.get("whisper_format_error", f"오류: 지원하지 않는 오디오 형식 ({file_extension})입니다.")
 
-        temp_audio_path += f".{file_extension}"
+        temp_audio_path = os.path.join(temp_dir, f"audio.{file_extension}")
 
+        # 파일 포인터를 처음으로 되돌리고 내용을 기록
+        audio_file.seek(0)
         with open(temp_audio_path, "wb") as f:
             f.write(audio_file.read())
         
-        # 언어 코드 설정 (Whisper는 BCP-47 포맷을 사용)
-        whisper_lang = {
-            "ko": "ko",
-            "en": "en",
-            "ja": "ja"
-        }.get(lang_key, "en") # 기본값은 영어
-
+        # 3. Whisper API 호출
         with open(temp_audio_path, "rb") as audio_data:
-            # Whisper API 호출
-            transcript = openai_client.audio.transcriptions.create(
+            transcript = client.audio.transcriptions.create(
                 model="whisper-1",
-                file=audio_data,
-                language=whisper_lang
+                file=audio_data
+                # Whisper는 언어를 자동으로 감지하므로 language 파라미터는 제거했습니다.
             )
         
-        # API 응답에서 텍스트 추출
+        # 4. API 응답에서 텍스트 추출
         return transcript.text
     
     except Exception as e:
+        # OpenAI 관련 구체적인 오류 메시지 출력
         error_msg = str(e)
         if "Authentication" in error_msg or "api_key" in error_msg:
-             return LANG[lang_key].get("whisper_auth_error", "❌ Whisper API 인증 실패: API Key를 확인하세요.")
+             return L.get("whisper_auth_error", "❌ Whisper API 인증 실패: API Key를 확인하세요.")
         return f"❌ Whisper API 호출 실패: {error_msg}"
     finally:
         # 임시 파일 정리 (try-except-finally 구문 보장)
         if os.path.exists(temp_audio_path):
              os.remove(temp_audio_path)
-        os.rmdir(temp_dir)
 
 
 def synthesize_and_play_audio(current_lang_key):
@@ -925,21 +922,12 @@ LANG = {
         "customer_positive_response": "親切なご対応ありがとうございました。",
         "button_end_chat": "対応終了 (アンケートを依頼)",
         "agent_response_header": "✍️ エージェント応答",
-        "agent_response_placeholder": "顧客に返信 (必須情報の要求/確認、または解決策の提示)",
+        "agent_response_placeholder": "顧客に返信 (必須情報の要求/확인、または解決策の提示)",
         "send_response_button": "応答送信",
         "request_rebuttal_button": "顧客の次の反応を要求", 
         "new_simulation_button": "新しいシミュレーションを開始",
         "history_selectbox_label": "履歴を選択してロード:",
-        "history_load_button": "選択された履歴をロード",
-        "delete_history_button": "❌ 全履歴を削除", # ⭐ 다국어 키 추가
-        "delete_confirm_message": "本当にすべてのシミュレーション履歴を削除してもよろしいですか？この操作は元に戻せません。", # ⭐ 다국어 키 추가
-        "delete_confirm_yes": "はい、削除します", # ⭐ 다국어 키 추가
-        "delete_confirm_no": "いいえ、維持します", # ⭐ 다국어 키 추가
-        "delete_success": "✅ 削除が完了されました!", # ⭐ 다국어 키 추가
-        "deleting_history_progress": "履歴削除中...", # ⭐ 다국어 키 추가
-        "search_history_label": "履歴キーワード検索", # ⭐ 다국어 키 추가
-        "date_range_label": "日付範囲フィルター", # ⭐ 다국어 키 추가
-        "no_history_found": "検索条件に一致する履歴はありません。" # ⭐ 다국어 키 추가
+        "history_load_button": "選択された履歴をロード"
     }
 }
 
@@ -1185,7 +1173,7 @@ if feature_selection == L["simulator_tab"]:
             histories = load_simulation_histories(db)
             
             # 2-1. 검색 필터
-            search_query = st.text_input(L["search_history_label"], key="history_search")
+            search_query = st.text_input(L["search_history_label"], key="history_search", value="")
             
             # 2-2. 날짜 필터 (st.date_input은 브라우저 로케일을 따름)
             today = datetime.now().date()
