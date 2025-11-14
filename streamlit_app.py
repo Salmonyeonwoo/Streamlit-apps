@@ -698,10 +698,11 @@ def get_vector_store(text_chunks):
     
     # Mock 객체 반환 (실제 FAISS 객체가 아님)
     class MockVectorStore:
-        def as_retriever(self, search_kwargs):
+        def as_retriever(self, search_kwargs={}): # search_kwargs 추가
             return self
         def get_relevant_documents(self, query):
             # Mock Document Source
+            from langchain.schema.document import Document # 내부 임포트
             return [Document(page_content="Mock RAG content about the uploaded files.")]
             
     return MockVectorStore() 
