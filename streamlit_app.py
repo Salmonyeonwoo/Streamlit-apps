@@ -250,16 +250,16 @@ def transcribe_audio_with_whisper(audio_file, client, lang_key):
     """Whisper API를 사용하여 오디오 파일을 텍스트로 전사합니다."""
     L = LANG[lang_key] # 현재 언어 키 로드
     
-    # 1. OpenAI Client 초기화 확인
     if client is None:
-        return L.get("whisper_client_error", "오류: Whisper API Client가 초기화되지 않았습니다.")
+        # OpenAI Key가 없는 경우 오류 메시지 반환
+        return L.get("whisper_client_error", "❌ 오류: Whisper API Client가 초기화되지 않았습니다. Secrets에 OPENAI_API_KEY를 설정했는지 확인하세요.")
     
-    # 2. UploadedFile 객체의 내용을 임시 파일에 기록
+    # UploadedFile 객체의 내용을 임시 파일에 기록
     temp_dir = tempfile.mkdtemp()
     temp_audio_path = "" # 초기화
     
     try:
-        # st.audio_input의 경우 파일 이름이 없어 name 속성이 None일 수 있으므로 안전하게 처리
+        # st.audio_input은 파일 이름이 없어 name 속성이 None일 수 있으므로 안전하게 처리
         # Streamlit 1.38.0 기준으로 st.audio_input은 audio/wav MIME 타입의 BytesIO 객체를 반환하는 경우가 많음
         mime_type = audio_file.type if audio_file.type else 'audio/wav'
         file_extension = mime_type.split('/')[-1].lower() if '/' in mime_type else 'wav' 
@@ -267,7 +267,7 @@ def transcribe_audio_with_whisper(audio_file, client, lang_key):
         # Whisper가 지원하는 형식인지 확인 (st.audio_input은 보통 WAV/MP3/M4A 등을 반환)
         supported_extensions = ["mp3", "mp4", "mpeg", "mpga", "m4a", "wav", "webm"]
         if file_extension not in supported_extensions and mime_type not in ['audio/wav', 'audio/mpeg']:
-             return L.get("whisper_format_error", f"오류: 지원하지 않는 오디오 형식 ({mime_type} 또는 .{file_extension})입니다.")
+             return L.get("whisper_format_error", f"❌ 오류: 지원하지 않는 오디오 형식 ({mime_type} 또는 .{file_extension})입니다.")
 
         temp_audio_path = os.path.join(temp_dir, f"temp_audio_{time.time()}.{file_extension}")
         
@@ -892,7 +892,7 @@ LANG = {
         "quiz_complete": "クイズ完了!",
         "score": "スコア",
         "retake_quiz": "クイズを再挑戦",
-        "quiz_error_llm": "LLMが正しいJSON의 形式を読み取れませんでしたので、クイズの生成が失敗しました。",
+        "quiz_error_llm": "LLMが正しいJSONの形式を読み取れませんでしたので、クイズの生成が失敗しました。",
         "quiz_original_response": "LLM 原本応答",
         "firestore_loading": "データベースからRAGインデックスをロード中...",
         "firestore_no_index": "データベースで既存のRAGインデックスが見つかりません。ファイルをアップロードして新しく作成してください。", 
@@ -901,7 +901,7 @@ LANG = {
         "response_generating": "応答生成中...", # ⭐ 다국어 키 추가
         "lstm_result_header": "達成度予測結果",
         "lstm_score_metric": "現在の予測達成度",
-        "lstm_score_info": "次のクイズの推定スコアは約 **{predicted_score:.1f}点**です。学習の成果を維持または向上させてください！",
+        "lstm_score_info": "次のクイズの推定スコアは約 **{predicted_score:.1f}点**입니다。学習の成果を維持または向上させてください！",
         "lstm_rerun_button": "新しい仮想データで予測",
 
         # ⭐ 시뮬레이터 관련 텍스트
@@ -909,7 +909,7 @@ LANG = {
         "simulator_desc": "難しい顧客の問い合わせに対して、AIによる対応案とガイドラインを提供します。",
         "customer_query_label": "顧客の問い合わせ内容（リンク任意）",
         "customer_type_label": "顧客の傾向",
-        "customer_type_options": ["一般的な問い合わせ", "手ごわい顧客", "非常に不満な顧客"],
+        "customer_type_options": ["一般的な問い合わせ", "手ごわ이顧客", "非常に不満な顧客"],
         "button_simulate": "対応アドバイスを要求",
         "simulation_warning_query": "顧客の問い合わせ内容を入力してください。",
         "simulation_no_key_warning": "⚠️ APIキーが不足しています。応答の生成は続行できません。（UI設定は完了しています。）",
@@ -933,21 +933,26 @@ LANG = {
         "customer_positive_response": "親切なご対応ありがとうございました。",
         "button_end_chat": "対応終了 (アンケートを依頼)",
         "agent_response_header": "✍️ エージェント応答",
-        "agent_response_placeholder": "顧客に返信 (必須情報の要求/확인、または解決策の提示)",
+        "agent_response_placeholder": "顧客に返信 (必須情報の要求/確認、または解決策の提示)",
         "send_response_button": "応答送信",
         "request_rebuttal_button": "顧客の次の反応を要求", 
         "new_simulation_button": "新しいシミュレーションを開始",
-        "history_selectbox_label": "履歴を選択してロード",
+        "history_selectbox_label": "履歴を選択してロード:",
         "history_load_button": "選択された履歴をロード",
         "delete_history_button": "❌ 全履歴を削除", # ⭐ 다국어 키 추가
-        "delete_confirm_message": "本当に全てのシミュレーション履歴を削除してもよろしいですか？この操作は元に戻せません。", # ⭐ 다국어 키 추가
+        "delete_confirm_message": "本当にすべてのシミュレーション履歴を削除してもよろしいですか？この操作は元に戻せません。", # ⭐ 다국어 키 추가
         "delete_confirm_yes": "はい、削除します", # ⭐ 다국어 키 추가
         "delete_confirm_no": "いいえ、維持します", # ⭐ 다국어 키 추가
         "delete_success": "✅ 削除が完了されました!", # ⭐ 다국어 키 추가
         "deleting_history_progress": "履歴削除中...", # ⭐ 다국어 키 추가
         "search_history_label": "履歴キーワード検索", # ⭐ 다국어 키 추가
         "date_range_label": "日付範囲フィルター", # ⭐ 다국어 키 추가
-        "no_history_found": "検索条件に一致する履歴はありません。" # ⭐ 다국어 키 추가
+        "no_history_found": "検索条件に一致する履歴はありません。", # ⭐ 다국어 키 추가
+        "whisper_client_error": "❌ OpenAI Keyが設定されていないため、音声認識機能は使えません。", # ⭐ Whisper 오류 메시지 추가
+        "whisper_auth_error": "❌ Whisper API認証失敗: API Keyを確認してください。",
+        "whisper_format_error": "❌ 오류: サポートされていないオーディオ形式です。",
+        "whisper_processing": "音声ファイルをテキストに変換中...",
+        "whisper_success": "✅ 音声認識が完了しました！テキストボックスを確認してください。"
     }
 }
 
@@ -1167,7 +1172,7 @@ if feature_selection == L["simulator_tab"]:
             openai_client = OpenAI(api_key=openai_key)
         except Exception as e:
             # 인증 오류 발생 시 경고만 표시하고 앱은 계속 실행
-            st.warning(f"OpenAI Client 초기화 오류: {e}")
+            st.warning(L.get("whisper_auth_error", f"OpenAI Client 초기화 오류: {e}"))
             openai_client = None
     
     # 1. TTS 유틸리티 (상태 표시기 및 JS 함수)를 페이지 상단에 삽입
@@ -1204,7 +1209,7 @@ if feature_selection == L["simulator_tab"]:
             histories = load_simulation_histories(db)
             
             # 2-1. 검색 필터
-            search_query = st.text_input(L["search_history_label"], key="history_search")
+            search_query = st.text_input(L["search_history_label"], key="history_search", value="")
             
             # 2-2. 날짜 필터 (st.date_input은 브라우저 로케일을 따름)
             today = datetime.now().date()
@@ -1428,15 +1433,6 @@ if feature_selection == L["simulator_tab"]:
                 # --- ⭐ Whisper 오디오 전사 기능 추가 ---
                 col_audio, col_text_area = st.columns([1, 2])
                 
-                # OpenAI Client 초기화 (Secrets에서 키를 로드)
-                openai_key = st.secrets.get("OPENAI_API_KEY")
-                openai_client = None
-                if openai_key:
-                    try:
-                        openai_client = OpenAI(api_key=openai_key)
-                    except Exception:
-                        openai_client = None
-
                 # 전사 결과 저장소 초기화 (audio_input 때문에 필요)
                 if 'transcribed_text' not in st.session_state:
                     st.session_state.transcribed_text = ""
@@ -1446,29 +1442,28 @@ if feature_selection == L["simulator_tab"]:
                     # ⭐ st.audio_input 위젯 사용
                     audio_file = st.audio_input(L["button_mic_input"], key="simulator_audio_input_file")
                 
-                if audio_file and openai_client:
-                    with st.spinner(L.get("whisper_processing", "음성 파일을 텍스트로 변환 중...")):
-                        try:
-                            # 전사 함수 호출
-                            transcribed_text = transcribe_audio_with_whisper(audio_file, openai_client, current_lang_key)
-                            
-                            if transcribed_text.startswith("❌") or transcribed_text.startswith("오류"):
-                                st.error(transcribed_text)
-                                st.session_state.transcribed_text = ""
-                            else:
-                                st.session_state.transcribed_text = transcribed_text
-                                st.success(L.get("whisper_success", "✅ 음성 전사 완료! 텍스트 창을 확인하세요."))
+                if audio_file:
+                    if openai_client is None:
+                        st.error(L.get("whisper_client_error", "OpenAI Key가 없어 음성 인식을 사용할 수 없습니다."))
+                    else:
+                        with st.spinner(L.get("whisper_processing", "음성 파일을 텍스트로 변환 중...")):
+                            try:
+                                # 전사 함수 호출
+                                transcribed_text = transcribe_audio_with_whisper(audio_file, openai_client, current_lang_key)
                                 
-                            # st.audio_input은 파일 객체를 반환하므로, rerun을 통해 텍스트 영역에 값을 반영합니다.
-                            st.rerun() 
-                            
-                        except Exception as e:
-                            st.error(f"음성 전사 처리 중 오류 발생: {e}")
-                            st.session_state.transcribed_text = ""
-                elif audio_file and openai_client is None:
-                    with col_upload:
-                        st.error(L.get("whisper_client_error", "Whisper API Client 초기화 실패. Secrets에 OPENAI_API_KEY를 설정했는지 확인하세요."))
-
+                                if transcribed_text.startswith("❌") or transcribed_text.startswith("오류"):
+                                    st.error(transcribed_text)
+                                    st.session_state.transcribed_text = ""
+                                else:
+                                    st.session_state.transcribed_text = transcribed_text
+                                    st.success(L.get("whisper_success", "✅ 음성 전사 완료! 텍스트 창을 확인하세요."))
+                                    
+                                # st.audio_input은 파일 객체를 반환하므로, rerun을 통해 텍스트 영역에 값을 반영합니다.
+                                st.rerun() 
+                                
+                            except Exception as e:
+                                st.error(f"음성 전사 처리 중 오류 발생: {e}")
+                                st.session_state.transcribed_text = ""
 
                 # st.text_area는 전사 결과를 기본값으로 사용
                 agent_response = col_text_area.text_area(
