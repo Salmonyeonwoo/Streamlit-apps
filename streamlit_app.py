@@ -389,7 +389,7 @@ LANG = {
         "quiz_complete": "クイズ完了!",
         "score": "スコア",
         "retake_quiz": "クイズを再挑戦",
-        "quiz_error_llm": "LLMが正しいJSONの形式を読み取れませんでしたので、クイズの生成が失敗しました。",
+        "quiz_error_llm": "LLMが正しいJSONの形式を読み取れませんでしたので、クイズの生成が失敗했습니다。",
         "quiz_original_response": "LLM 原本応答",
         "firestore_loading": "データベースからRAGインデックスをロード中...",
         "db_save_complete": "(DB保存完了)", 
@@ -1214,8 +1214,12 @@ elif feature_selection == L["simulator_tab"]:
         
         current_lang_key = st.session_state.language 
 
-        if st.button(L["button_simulate"], key="start_simulation", disabled=st.session_state.initial_advice_provided):
-            print("Simulation started!")
+        # ********** 1217행 수정 적용 시작 **********
+        # 버튼을 누르기 전에 L["button_simulate"] 키가 존재하는지 확인하는 방어 로직 추가
+        simulate_button_text = L.get("button_simulate", "Simulate") 
+        
+        if st.button(simulate_button_text, key="start_simulation", disabled=st.session_state.initial_advice_provided):
+        # ********** 1217행 수정 적용 끝 **********
             if not customer_query: st.warning(L["simulation_warning_query"]); st.stop()
             
             st.session_state.simulator_memory.clear()
@@ -1240,14 +1244,8 @@ Customer Inquiry: {customer_query}
                 st.session_state.simulator_memory.chat_memory.add_ai_message(ai_advice_text)
                 st.session_state.initial_advice_provided = True
                 save_simulation_history(db, customer_query, customer_type_display, st.session_state.simulator_messages)
-                st.info(L["simulation_running"])
                 st.warning(L["simulation_no_key_warning"])
                 st.rerun() 
-
-            if st.session_state.initial_advice_provided:
-                st.success("Initial advice provided. Simulation button is disabled.")
-            else:
-                st.warning("Initial advice not provided yet. Click the button to proceed.")
             
             if LLM_API_KEY and st.session_state.is_llm_ready:
                 with st.spinner(L["response_generating"]):
