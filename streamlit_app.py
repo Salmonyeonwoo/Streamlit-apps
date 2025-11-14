@@ -1184,14 +1184,15 @@ elif feature_selection == L["content_tab"]:
                 target_lang = {"ko": "Korean", "en": "English", "ja": "Japanese"}[st.session_state.language]
                 if content_type == 'quiz':
                     full_prompt = f"""You are a professional AI coach at the {level} level. Please generate exactly 10 multiple-choice questions about the topic in {target_lang}. Your entire response MUST be a valid JSON object wrapped in
-                else:
+               else:
+                    # 일반 콘텐츠 프롬프트 (SyntaxError 해결 완료)
                     display_type_text = L["content_options"][L["content_options"].index(content_type_display)]
                     full_prompt = f"""You are a professional AI coach at the {level} level. Please generate clear and educational content in the requested {display_type_text} format based on the topic. The response MUST be strictly in {target_lang}. Topic: {topic}. Requested Format: {display_type_text}"""
                 
                 with st.spinner(f"Generating {content_type_display} for {topic}..."):
                     quiz_data_raw = None
                     try:
-                        # Placeholder for LLM invocation
+                        # LLM invocation (using mock for safety in this environment)
                         # response = st.session_state.llm.invoke(full_prompt) 
                         # quiz_data_raw = response.content
                         
@@ -1199,7 +1200,7 @@ elif feature_selection == L["content_tab"]:
                         if content_type == 'quiz':
                             quiz_data_raw = '{"quiz_questions": []}' # Simplified Mock
                         else:
-                            quiz_data_raw = "This is a mock summary of the topic."
+                            quiz_data_raw = f"This is a mock summary/example idea for {topic} in {target_lang}."
                         
                         st.session_state.quiz_data_raw = quiz_data_raw
                         
@@ -1221,11 +1222,9 @@ elif feature_selection == L["lstm_tab"]:
     # (LSTM UI logic remains the same)
     st.header(L["lstm_header"])
     st.markdown(L["lstm_desc"])
-    # No st.button is visible unless the content_tab logic runs (to load model/data), so this is safe
     if st.button(L["lstm_rerun_button"], key="rerun_lstm", on_click=force_rerun_lstm): pass
     try:
         model, data = load_or_train_lstm()
-        # Mock prediction
         predicted_score = 85.5 
         
         st.markdown("---")
