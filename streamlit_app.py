@@ -1,5 +1,6 @@
 # ========================================
-# streamlit_app_full_integration_final.py (FIXED)
+# streamlit_app_final.py
+# 완성본: Streamlit 앱 — Whisper 전사, Firestore/GCS 통합, 시뮬레이터, RAG, LSTM
 # ========================================
 
 import streamlit as st
@@ -44,7 +45,6 @@ if 'language' not in st.session_state:
     st.session_state.language = DEFAULT_LANG
 
 LANG = {
-    # ... (LANG 딕셔너리 내용은 유지) ...
     "ko": {
         "title": "개인 맞춤형 AI 학습 코치 (음성 및 DB 통합)",
         "sidebar_title": "📚 AI Study Coach 설정",
@@ -153,7 +153,7 @@ LANG = {
         "whisper_client_error": "❌ 오류: Whisper API Client가 초기화되지 않았습니다. Secrets에 OPENAI_API_KEY를 설정했는지 확인하세요.",
         "whisper_auth_error": "❌ Whisper API 인증 실패: API Key를 확인하세요.",
         "whisper_format_error": "❌ 오류: 지원하지 않는 오디오 형식입니다.",
-        "whisper_success": "✅ 음성 전사 완료! 텍스트 창을 확인하세요.",
+        "whisper_success": "✅ 음성 전사 완료! 텍스트 창을 확인하세요。",
         "playback": '녹음 재생',
         "retranscribe": '재전사',
         "delete": '삭제',
@@ -168,6 +168,10 @@ LANG = {
         "gcs_playback_fail": '오디오 재생 실패',
         "gcs_no_audio": '오디오 파일 없음 (GCS 미설정)',
         "error": '오류:',
+        "firestore_no_db_connect": "❌ DB 연결 실패: 상담 이력 저장 불가",
+        "save_history_success": "✅ 상담 이력이 저장되었습니다.",
+        "save_history_fail": "❌ 상담 이력 저장 실패",
+        "delete_fail": "삭제 실패",
     },
     "en": {
         "title": "Personalized AI Study Coach (Voice & DB Integration)",
@@ -292,6 +296,10 @@ LANG = {
         "gcs_playback_fail": 'Audio playback failed',
         "gcs_no_audio": 'No audio file (GCS not configured)',
         "error": 'Error:',
+        "firestore_no_db_connect": "❌ DB 연결 실패: 상담 이력 저장 불가",
+        "save_history_success": "✅ 상담 이력이 저장되었습니다.",
+        "save_history_fail": "❌ 상담 이력 저장 실패",
+        "delete_fail": "삭제 실패",
     },
     "ja": {
         "title": "パーソナライズAI学習コーチ (音声・DB統合)",
@@ -387,7 +395,7 @@ LANG = {
         "date_range_label": "日付範囲フィルター", 
         "no_history_found": "検索条件に一致する履歴はありません。",
 
-        # ⭐ 音성 기록 통합 관련 키 (Voice/GCS)
+        # ⭐ 음성 기록 통합 관련 키 (Voice/GCS)
         "voice_rec_header": '音声記録と管理',
         "record_help": 'マイクボタンを押して録音するか、ファイルをアップロードしてください。',
         "uploaded_file": '音声ファイルをアップロード',
@@ -416,6 +424,10 @@ LANG = {
         "gcs_playback_fail": '音声再生に失敗しました',
         "gcs_no_audio": '音声ファイルなし (GCS未設定)',
         "error": 'エラー:',
+        "firestore_no_db_connect": "❌ DB 연결 실패: 상담 이력 저장 불가",
+        "save_history_success": "✅ 상담 이력이 저장되었습니다.",
+        "save_history_fail": "❌ 상담 이력 저장 실패",
+        "delete_fail": "削除失敗",
     }
 }
 
@@ -425,8 +437,7 @@ LANG = {
 # -----------------------------
 
 def _get_admin_credentials():
-    """Secrets에서 서비스 계정 정보를 안전하게 로드하고 딕셔너리로 반환합니다."""
-    # (Secrets loading logic remains the same)
+    """Secrets에서 서비스 계정 정보를 안전하게 로드하고 딕셔너리로 반환합니다. (UI 출력 없음)"""
     if "FIREBASE_SERVICE_ACCOUNT_JSON" not in st.secrets:
         return None, "FIREBASE_SERVICE_ACCOUNT_JSON Secret이 누락되었습니다."
     service_account_data = st.secrets["FIREBASE_SERVICE_ACCOUNT_JSON"]
@@ -435,14 +446,14 @@ def _get_admin_credentials():
         try:
             sa_info = json.loads(service_account_data.strip())
         except json.JSONDecodeError as e:
-            return None, f"FIREBASE_SERVICE_ACCOUNT_JSON의 JSON 구문 오류입니다. 값을 확인하세요. 상세 오류: {e}"
+            return None, f"FIREBASE_SERVICE_ACCOUNT_JSON의 JSON 구문 오류입니다. 상세 오류: {e}"
     elif hasattr(service_account_data, 'get'):
         try:
             sa_info = dict(service_account_data)
         except Exception:
-             return None, f"FIREBASE_SERVICE_ACCOUNT_JSON의 딕셔너리 변환 실패. 타입: {type(service_account_data)}"
+             return None, f"FIREBASE_SERVICE_ACCOUNT_JSON의 딕셔너리 변환 실패."
     else:
-        return None, f"FIREBASE_SERVICE_ACCOUNT_JSON의 형식이 올바르지 않습니다. (Type: {type(service_account_data)})"
+        return None, f"FIREBASE_SERVICE_ACCOUNT_JSON의 형식이 올바르지 않습니다."
     
     if not sa_info.get("project_id") or not sa_info.get("private_key"):
         return None, "JSON 내 'project_id' 또는 'private_key' 필드가 누락되었습니다."
@@ -514,7 +525,153 @@ def init_openai_client(L):
 def get_gcs_bucket_name():
     return st.secrets.get('GCS_BUCKET_NAME') or os.environ.get('GCS_BUCKET_NAME')
 
+# -----------------------------
+# 2. GCS, Firestore, Whisper Helpers (통합된 함수)
+# -----------------------------
+
+def upload_audio_to_gcs(bucket_name: str, blob_name: str, audio_bytes: bytes, content_type: str = 'audio/webm'):
+    L = LANG[st.session_state.language]
+    gcs_client = init_gcs_client(L)[0] # 클라이언트 객체만 가져옴
+    if not gcs_client:
+        raise RuntimeError(L['gcs_not_conf'])
+    bucket = gcs_client.bucket(bucket_name)
+    blob = bucket.blob(blob_name)
+    blob.upload_from_string(audio_bytes, content_type=content_type)
+    return f'gs://{bucket_name}/{blob_name}' 
+
+def download_audio_from_gcs(bucket_name: str, blob_name: str) -> bytes:
+    L = LANG[st.session_state.language]
+    gcs_client = init_gcs_client(L)[0] # 클라이언트 객체만 가져옴
+    if not gcs_client:
+        raise RuntimeError(L['gcs_not_conf'])
+    try:
+        bucket = gcs_client.bucket(bucket_name)
+        blob = bucket.blob(blob_name)
+        return blob.download_as_bytes()
+    except NotFound:
+        raise FileNotFoundError(f"GCS Blob not found: {blob_name}")
+    except Exception as e:
+        raise RuntimeError(f"{L['gcs_playback_fail']}: {e}")
+
+def save_audio_record(db, bucket_name, audio_bytes: bytes, filename: str, transcript_text: str, meta: dict = None, mime_type: str = 'audio/webm'):
+    L = LANG[st.session_state.language]
+    if not db:
+        raise RuntimeError('Firestore not initialized')
+
+    ts = datetime.now(timezone.utc)
+    doc_ref = db.collection('voice_records').document()
+    blob_name = f"voice_records/{doc_ref.id}/{filename}"
+
+    gcs_path = None
+    gcs_client = init_gcs_client(L)[0]
+    if bucket_name and gcs_client:
+        try:
+            gcs_path = upload_audio_to_gcs(bucket_name, blob_name, audio_bytes, mime_type)
+        except Exception as e:
+            st.warning(f"{L['upload_fail']}: {e}")
+            gcs_path = None
+    else:
+        st.warning(L['gcs_missing'])
+
+    data = {
+        'created_at': ts,
+        'filename': filename,
+        'size': len(audio_bytes),
+        'gcs_path': gcs_path,
+        'transcript': transcript_text,
+        'mime_type': mime_type, 
+        'language': st.session_state.language,
+        'meta': meta or {}
+    }
+
+    doc_ref.set(data)
+    return doc_ref.id
+
+def delete_audio_record(db, bucket_name, doc_id: str):
+    L = LANG[st.session_state.language]
+    doc_ref = db.collection('voice_records').document(doc_id)
+    doc = doc_ref.get()
+    if not doc.exists:
+        return False
+    data = doc.to_dict()
+    
+    gcs_client = init_gcs_client(L)[0]
+    # delete GCS blob
+    try:
+        if data.get('gcs_path') and gcs_client and bucket_name:
+            blob_name = data['gcs_path'].split(f'gs://{bucket_name}/')[-1]
+            bucket = gcs_client.bucket(bucket_name)
+            blob = bucket.blob(blob_name)
+            blob.delete()
+    except Exception as e:
+        st.warning(f"GCS delete warning: {e}")
+    
+    # delete firestore doc
+    doc_ref.delete()
+    return True
+
+def transcribe_bytes_with_whisper(audio_bytes: bytes, mime_type: str = 'audio/webm'):
+    L = LANG[st.session_state.language]
+    openai_client = init_openai_client(L)[0] # 클라이언트 객체만 가져옴
+    if openai_client is None:
+        raise RuntimeError(L['openai_missing'])
+    
+    # Determine file extension
+    ext = mime_type.split('/')[-1].lower() if '/' in mime_type else 'webm'
+    
+    # write to temp file
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=f'.{ext}')
+    tmp.write(audio_bytes)
+    tmp.flush()
+    tmp.close()
+    
+    try:
+        with open(tmp.name, 'rb') as af:
+            res = openai_client.audio.transcriptions.create(
+                model='whisper-1', 
+                file=af,
+                response_format='text'
+            )
+        return res.strip() or ''
+    except Exception as e:
+        raise RuntimeError(f"{L['error']} Whisper: {e}")
+    finally:
+        try:
+            os.remove(tmp.name)
+        except Exception:
+            pass
+
+
+# -----------------------------
+# 3. Firestore/RAG/LLM Helpers (기존 코드 유지)
+# -----------------------------
+
 # (나머지 Helper 함수들은 st.error/success를 직접 호출하지 않으므로 변경 없음)
+# _get_admin_credentials 함수는 위에서 수정된 내용이 반영되어야 함.
+
+def save_simulation_history(db, initial_query, customer_type, messages):
+    L = LANG[st.session_state.language]
+    if not db: 
+        st.sidebar.warning(L.get("firestore_no_db_connect", "❌ DB 연결 실패: 상담 이력 저장 불가"))
+        return False
+    history_data = [{k: v for k, v in msg.items()} for msg in messages]
+    data = {
+        "initial_query": initial_query,
+        "customer_type": customer_type,
+        "messages": history_data,
+        "language_key": st.session_state.language, 
+        "timestamp": firestore.SERVER_TIMESTAMP
+    }
+    try:
+        db.collection("simulation_histories").add(data)
+        st.sidebar.success(L.get("save_history_success", "✅ 상담 이력이 저장되었습니다."))
+        return True
+    except Exception as e:
+        st.sidebar.error(f"❌ {L.get('save_history_fail', '상담 이력 저장 실패')}: {e}")
+        return False
+
+# (나머지 LangChain 및 Utility 함수들은 변경 없음)
+# ...
 
 # -----------------------------
 # 5. Core Initialization & Session State
@@ -544,20 +701,20 @@ if 'last_transcript' not in st.session_state: st.session_state['last_transcript'
 if 'sim_audio_upload_key' not in st.session_state: st.session_state['sim_audio_upload_key'] = 0
 
 
-# --- 클라이언트 초기화 (st.set_page_config 이전에 실행되어야 하지만, UI 출력은 없음) ---
+# --- 클라이언트 초기화 ---
 firestore_db_client, db_msg = initialize_firestore_admin(L)
 st.session_state.firestore_db = firestore_db_client
 st.session_state.db_init_msg = db_msg
 
 gcs_client_obj, gcs_msg = init_gcs_client(L)
-gcs_client = gcs_client_obj # Global reference for helper functions
+gcs_client = gcs_client_obj
 st.session_state.gcs_init_msg = gcs_msg
 
 openai_client_obj, openai_msg = init_openai_client(L)
-openai_client = openai_client_obj # Global reference for helper functions
+openai_client = openai_client_obj
 st.session_state.openai_init_msg = openai_msg
 
-# --- LLM 초기화 (에러 메시지는 session state에 저장) ---
+# --- LLM 초기화 ---
 API_KEY = os.environ.get("GEMINI_API_KEY")
 if 'llm' not in st.session_state and API_KEY:
     try:
@@ -581,8 +738,9 @@ if 'llm' not in st.session_state and API_KEY:
 elif not API_KEY:
     st.session_state.llm_init_error_msg = L["llm_error_key"]
 
-# RAG Index Loading (session state에 결과만 저장)
+# RAG Index Loading
 if st.session_state.get('firestore_db') and 'conversation_chain' not in st.session_state and st.session_state.is_llm_ready:
+    # (RAG Index loading logic remains the same)
     loaded_index = load_index_from_firestore(st.session_state.firestore_db, st.session_state.embeddings)
     if loaded_index:
         st.session_state.conversation_chain = get_rag_chain(loaded_index)
@@ -626,7 +784,7 @@ with st.sidebar:
 
     # DB & GCS 상태 표시
     if "✅" in st.session_state.db_init_msg: st.success(st.session_state.db_init_msg)
-    else: st.warning(st.session_state.db_init_msg) # 에러 메시지를 warning으로 표시 (UI 구성 유지를 위해)
+    else: st.warning(st.session_state.db_init_msg)
     
     if "✅" in st.session_state.gcs_init_msg: st.success(st.session_state.gcs_init_msg)
     else: st.warning(st.session_state.gcs_init_msg)
@@ -940,25 +1098,12 @@ elif feature_selection == L["simulator_tab"]:
         
         st.markdown("---")
         for message in st.session_state.simulator_messages:
-            if message["role"] == "customer":
-                with st.chat_message("user", avatar="🙋"):
-                    st.markdown(message["content"])
-            elif message["role"] == "supervisor":
-                with st.chat_message("assistant", avatar="🤖"):
-                    st.markdown(message["content"])
-                    render_tts_button(message["content"], st.session_state.language) 
-            elif message["role"] == "agent_response":
-                with st.chat_message("user", avatar="🧑‍💻"):
-                    st.markdown(message["content"])
-            elif message["role"] == "customer_rebuttal":
-                with st.chat_message("assistant", avatar="😠"):
-                    st.markdown(message["content"])
-            elif message["role"] == "customer_end":
-                with st.chat_message("assistant", avatar="😊"):
-                    st.markdown(message["content"])
-            elif message["role"] == "system_end":
-                with st.chat_message("assistant", avatar="✨"):
-                    st.markdown(message["content"])
+            if message["role"] == "customer": with st.chat_message("user", avatar="🙋"): st.markdown(message["content"])
+            elif message["role"] == "supervisor": with st.chat_message("assistant", avatar="🤖"): st.markdown(message["content"]); render_tts_button(message["content"], st.session_state.language) 
+            elif message["role"] == "agent_response": with st.chat_message("user", avatar="🧑‍💻"): st.markdown(message["content"])
+            elif message["role"] == "customer_rebuttal": with st.chat_message("assistant", avatar="😠"): st.markdown(message["content"])
+            elif message["role"] == "customer_end": with st.chat_message("assistant", avatar="😊"): st.markdown(message["content"])
+            elif message["role"] == "system_end": with st.chat_message("assistant", avatar="✨"): st.markdown(message["content"])
 
         if st.session_state.initial_advice_provided and not st.session_state.is_chat_ended:
             last_role = st.session_state.simulator_messages[-1]['role'] if st.session_state.simulator_messages else None
@@ -1080,7 +1225,7 @@ elif feature_selection == L["content_tab"]:
             if topic:
                 target_lang = {"ko": "Korean", "en": "English", "ja": "Japanese"}[st.session_state.language]
                 if content_type == 'quiz':
-                    full_prompt = f"""You are a professional AI coach at the {level} level. Please generate exactly 10 multiple-choice questions about the topic in {target_lang}. Your entire response MUST be a valid JSON object wrapped in ```json tags. The JSON must have a single key named 'quiz_questions', which is an array of objects. Each question object must contain: 'question' (string), 'options' (array of objects with 'option' (A,B,C,D) and 'text' (string)), 'correct_answer' (A,B,C, or D), and 'explanation' (string). Topic: {topic}"""
+                    full_prompt = f"""You are a professional AI coach at the {level} level. Please generate exactly 10 multiple-choice questions about the topic in {target_lang}. Your entire response MUST be a valid JSON object wrapped in
                 else:
                     display_type_text = L["content_options"][L["content_options"].index(content_type_display)]
                     full_prompt = f"""You are a professional AI coach at the {level} level. Please generate clear and educational content in the requested {display_type_text} format based on the topic. The response MUST be strictly in {target_lang}. Topic: {topic}. Requested Format: {display_type_text}"""
