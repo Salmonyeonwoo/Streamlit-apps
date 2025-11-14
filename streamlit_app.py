@@ -1386,8 +1386,12 @@ Customer Inquiry: {customer_query}
                                 st.session_state.last_transcript = ""
 
                 # st.text_area는 전사 결과를 기본값으로 사용
-                agent_response = col_text_area.text_area(
+               agent_response = col_text_area.text_area(
                     L["agent_response_placeholder"], 
+                    value=st.session_state.last_transcript,
+                    key="agent_response_area_text",
+                    height=150
+                )
                 
                                 
                 # --- Enter 키 전송 로직 ---
