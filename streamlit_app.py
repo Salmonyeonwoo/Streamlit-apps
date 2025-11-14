@@ -223,6 +223,7 @@ def delete_all_history(db):
         # 세션 상태도 초기화
         st.session_state.simulator_messages = []
         st.session_state.simulator_memory.clear()
+        st.session_state.initial_advice_provided = False
         st.session_state.show_delete_confirm = False
         st.success(L["delete_success"]) # ⭐ 다국어 적용
         st.rerun()
@@ -246,32 +247,33 @@ def clean_and_load_json(text):
     return None
 
 # ⭐ Whisper API 연동 함수 (OpenAI Client 인스턴스를 인수로 받음)
-def transcribe_audio_with_whisper(audio_file, client):
+def transcribe_audio_with_whisper(audio_file, client, lang_key):
     """Whisper API를 사용하여 오디오 파일을 텍스트로 전사합니다."""
-    L = LANG[st.session_state.language] # 현재 언어 키 로드
+    L = LANG[lang_key] # 현재 언어 키 로드
     
-    # 1. OpenAI Client 초기화 확인
     if client is None:
-        return L.get("whisper_client_error", "오류: Whisper API Client가 초기화되지 않았습니다. Secrets에 OPENAI_API_KEY를 설정했는지 확인하세요.")
+        # OpenAI Key가 없는 경우 오류 메시지 반환
+        return L.get("whisper_client_error", "오류: Whisper API Client가 초기화되지 않았습니다.")
     
-    # 2. UploadedFile 객체의 내용을 임시 파일에 기록
+    # UploadedFile 객체의 내용을 임시 파일에 기록
     temp_dir = tempfile.mkdtemp()
-    temp_audio_path = os.path.join(temp_dir, audio_file.name) 
     
     try:
         # 파일 확장자 확인 (Whisper가 지원하는 형식인지 확인)
-        file_extension = audio_file.name.split('.')[-1].lower()
-        if file_extension not in ["mp3", "mp4", "mpeg", "mpga", "m4a", "wav", "webm"]:
-             return L.get("whisper_format_error", f"오류: 지원하지 않는 오디오 형식 ({file_extension})입니다.")
+        # st.audio_input은 WAV/MP3/MP4 등 다양한 포맷을 반환할 수 있으나, MIME 타입으로 확인 필요
+        mime_type = audio_file.type
+        if 'audio' not in mime_type and 'video' not in mime_type:
+            return L.get("whisper_format_error", f"오류: 지원하지 않는 오디오/비디오 형식 ({mime_type})입니다.")
 
-        temp_audio_path = os.path.join(temp_dir, f"audio.{file_extension}")
-
+        # Streamlit은 파일 객체를 바로 반환하므로, 파일명을 임의로 지정
+        temp_audio_path = os.path.join(temp_dir, f"temp_audio_{time.time()}.{mime_type.split('/')[-1]}")
+        
         # 파일 포인터를 처음으로 되돌리고 내용을 기록
         audio_file.seek(0)
         with open(temp_audio_path, "wb") as f:
             f.write(audio_file.read())
         
-        # 3. Whisper API 호출
+        # Whisper API 호출
         with open(temp_audio_path, "rb") as audio_data:
             transcript = client.audio.transcriptions.create(
                 model="whisper-1",
@@ -279,7 +281,7 @@ def transcribe_audio_with_whisper(audio_file, client):
                 # Whisper는 언어를 자동으로 감지하므로 language 파라미터는 제거했습니다.
             )
         
-        # 4. API 응답에서 텍스트 추출
+        # API 응답에서 텍스트 추출
         return transcript.text
     
     except Exception as e:
@@ -602,14 +604,14 @@ def render_interactive_quiz(quiz_data, current_lang):
     options_list = list(options_dict.values())
     
     selected_answer = st.radio(
-        L.get("select_answer", "正解を選択してください"),
+        L.get("select_answer", "정답을 선택하세요"),
         options=options_list,
         key=f"q_radio_{q_index}"
     )
 
     col1, col2 = st.columns(2)
 
-    if col1.button(L.get("check_answer", "正解確認"), key=f"check_btn_{q_index}", disabled=st.session_state.quiz_submitted):
+    if col1.button(L.get("check_answer", "정답 확인"), key=f"check_btn_{q_index}", disabled=st.session_state.quiz_submitted):
         user_choice_letter = selected_answer.split(')')[0] if selected_answer else None
         correct_answer_letter = q_data['correct_answer']
 
@@ -619,24 +621,24 @@ def render_interactive_quiz(quiz_data, current_lang):
         st.session_state.quiz_submitted = True
         
         if is_correct:
-            st.success(L.get("correct_answer", "正解です！ 🎉"))
+            st.success(L.get("correct_answer", "정답입니다! 🎉"))
         else:
-            st.error(L.get("incorrect_answer", "不正解です。😞"))
+            st.error(L.get("incorrect_answer", "오답입니다.😞"))
         
-        st.markdown(f"**{L.get('correct_is', '正解')}**: {correct_answer_letter}")
-        st.info(f"**{L.get('explanation', '解説')}**: {q_data['explanation']}")
+        st.markdown(f"**{L.get('correct_is', '정답')}: {correct_answer_letter}**")
+        st.info(f"**{L.get('explanation', '해설')}:** {q_data['explanation']}")
 
     if st.session_state.quiz_submitted:
         if q_index < num_questions - 1:
-            if col2.button(L.get("next_question", "次の質問"), key=f"next_btn_{q_index}"):
+            if col2.button(L.get("next_question", "다음 문항"), key=f"next_btn_{q_index}"):
                 st.session_state.current_question += 1
                 st.session_state.quiz_submitted = False
                 st.rerun()
         else:
             total_correct = st.session_state.quiz_results.count(True)
             total_questions = len(st.session_state.quiz_results)
-            st.success(f"**{L.get('quiz_complete', 'クイズ完了!')}** {L.get('score', 'スコア')}: {total_correct}/{total_questions}")
-            if st.button(L.get("retake_quiz", "クイズを再挑戦"), key="retake"):
+            st.success(f"**{L.get('quiz_complete', '퀴즈 완료!')}** {L.get('score', '점수')}: {total_correct}/{total_questions}")
+            if st.button(L.get("retake_quiz", "퀴즈 다시 풀기"), key="retake"):
                 st.session_state.current_question = 0
                 st.session_state.quiz_results = [None] * num_questions
                 st.session_state.quiz_submitted = False
@@ -743,12 +745,7 @@ LANG = {
         "deleting_history_progress": "이력 삭제 중...", # ⭐ 다국어 키 추가
         "search_history_label": "이력 키워드 검색", # ⭐ 다국어 키 추가
         "date_range_label": "날짜 범위 필터", # ⭐ 다국어 키 추가
-        "no_history_found": "검색 조건에 맞는 이력이 없습니다。", # ⭐ 다국어 키 추가
-        "whisper_client_error": "❌ Whisper API Client 초기화 실패.",
-        "whisper_format_error": "오류: 지원하지 않는 오디오 형식입니다.",
-        "whisper_auth_error": "❌ Whisper API 인증 실패: API Key를 확인하세요.",
-        "whisper_processing": "음성 파일을 텍스트로 변환 중...",
-        "whisper_success": "✅ 음성 전사 완료! 텍스트 창을 확인하세요."
+        "no_history_found": "검색 조건에 맞는 이력이 없습니다。" # ⭐ 다국어 키 추가
     },
     "en": {
         "title": "Personalized AI Study Coach",
@@ -900,7 +897,7 @@ LANG = {
         "response_generating": "応答生成中...", # ⭐ 다국어 키 추가
         "lstm_result_header": "達成度予測結果",
         "lstm_score_metric": "現在の予測達成度",
-        "lstm_score_info": "次のクイズの推定スコアは約 **{predicted_score:.1f}点**です。学習の成果を維持または向上させてください！",
+        "lstm_score_info": "次のクイズの推定スコアは約 **{predicted_score:.1f}点**입니다。学習の成果を維持または向上させてください！",
         "lstm_rerun_button": "新しい仮想データで予測",
 
         # ⭐ 시뮬레이터 관련 텍스트
@@ -1439,8 +1436,8 @@ if feature_selection == L["simulator_tab"]:
                         openai_client = OpenAI(api_key=openai_key)
                     except Exception:
                         openai_client = None
-                
-                # 전사 결과 저장소 초기화
+
+                # 전사 결과 저장소 초기화 (audio_input 때문에 필요)
                 if 'transcribed_text' not in st.session_state:
                     st.session_state.transcribed_text = ""
                 
@@ -1450,22 +1447,29 @@ if feature_selection == L["simulator_tab"]:
                         st.warning(L.get("whisper_client_error", "OpenAI Key가 없어 음성 인식을 사용할 수 없습니다."))
                         audio_file = None
                     else:
-                        audio_file = st.file_uploader(L["button_mic_input"], type=["mp3", "mp4", "mpeg", "mpga", "m4a", "wav", "webm"], key="simulator_audio_input_file")
+                        # ⭐ st.audio_input 위젯 사용
+                        audio_file = st.audio_input(L["button_mic_input"], key="simulator_audio_input_file")
                 
                 if audio_file:
                     with st.spinner(L.get("whisper_processing", "음성 파일을 텍스트로 변환 중...")):
-                        transcribed_text = transcribe_audio_with_whisper(audio_file, openai_client)
-                        
-                        if transcribed_text.startswith("❌") or transcribed_text.startswith("오류"):
-                            st.error(transcribed_text)
+                        try:
+                            # 전사 함수 호출
+                            transcribed_text = transcribe_audio_with_whisper(audio_file, openai_client, current_lang_key)
+                            
+                            if transcribed_text.startswith("❌") or transcribed_text.startswith("오류"):
+                                st.error(transcribed_text)
+                                st.session_state.transcribed_text = ""
+                            else:
+                                st.session_state.transcribed_text = transcribed_text
+                                st.success(L.get("whisper_success", "✅ 음성 전사 완료! 텍스트 창을 확인하세요."))
+                                
+                            # st.audio_input은 파일을 업로드하면 상태가 리셋되지 않아 무한 루프에 빠질 수 있으므로,
+                            # 상태를 업데이트하고 rerun을 통해 오디오 입력을 비활성화된 상태로 만듭니다.
+                            # st.experimental_rerun() 대신 text_area에 값만 업데이트합니다.
+                        except Exception as e:
+                            st.error(f"음성 전사 처리 중 오류 발생: {e}")
                             st.session_state.transcribed_text = ""
-                        else:
-                            st.session_state.transcribed_text = transcribed_text
-                            st.success(L.get("whisper_success", "✅ 음성 전사 완료! 텍스트 창을 확인하세요."))
-                        
-                        # 오디오 파일 처리 후 상태를 리셋하여 재전송 시 무한 루프 방지
-                        st.experimental_set_query_params(refresh=time.time())
-                        st.rerun() 
+
 
                 # st.text_area는 전사 결과를 기본값으로 사용
                 agent_response = col_text_area.text_area(
@@ -1478,19 +1482,27 @@ if feature_selection == L["simulator_tab"]:
                 # --- Enter 키 전송 로직 ---
                 js_code_for_enter = f"""
                 <script>
+                // st.text_area의 키가 'agent_response_area_text'인 요소를 찾습니다.
                 const textarea = document.querySelector('textarea[key="agent_response_area_text"]');
                 const button = document.querySelector('button[key="send_agent_response"]');
                 
                 if (textarea && button) {{
                     textarea.addEventListener('keydown', function(event) {{
-                        if (event.key === 'Enter' && (!event.shiftKey && !event.ctrlKey)) {{
-                            event.preventDefault(); 
+                        // Shift + Enter 또는 Ctrl + Enter는 줄바꿈
+                        if (event.key === 'Enter' && (event.shiftKey || event.ctrlKey)) {{
+                            // 기본 동작(줄바꿈) 허용
+                        }} 
+                        // Enter만 눌렀을 때 전송
+                        else if (event.key === 'Enter') {{
+                            event.preventDefault(); // 기본 Enter 동작(줄바꿈) 방지
                             button.click();
                         }}
                     }});
                 }}
                 </script>
                 """
+                
+                # Streamlit에 JavaScript 삽입
                 st.components.v1.html(js_code_for_enter, height=0, width=0)
                 
                 if st.button(L["send_response_button"], key="send_agent_response"): 
@@ -1545,9 +1557,11 @@ if feature_selection == L["simulator_tab"]:
                     # ⭐ 핵심 수정된 프롬프트 (강력하게 협조적인 고객을 유도)
                     next_reaction_prompt = f"""
                     Analyze the entire chat history. Roleplay as the customer ({customer_type_display}). 
-                    Based on the agent's last message, generate ONE of the following responses in the customer's voice:
-                    1. Provide **ONE** of the crucial, previously requested details (Model, Location, or Last Step) in a cooperative tone.
-                    2. A short, positive closing remark (e.g., "{L['customer_positive_response']}").
+                    Based on the agent's last message, determine if the agent has requested multiple essential troubleshooting details (Model, Location, Last Step).
+                    
+                    If the agent requested multiple details, the customer MUST provide ALL of the requested details in a single, cooperative message. 
+                    If the agent requested only one detail, the customer MUST provide only that detail.
+                    If all essential details (Model, Location, Last Step) have been provided, the customer should generate a polite closing remark (e.g., "{L['customer_positive_response']}").
                     
                     Crucially, the customer MUST be highly cooperative. If the agent asks for information, the customer MUST provide the detail requested (Model, Location, or Last Step) without arguing or asking why. The purpose of this simulation is for the agent (human user) to practice systematically collecting information and troubleshooting.
                     
