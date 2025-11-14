@@ -235,6 +235,8 @@ LANG = {
         "no_history_found": "No history found matching the criteria.",
         "simulator_header": "AI Customer Response Simulator",
         "simulator_desc": "Provides AI draft responses and guidelines for difficult customer inquiries.",
+        "customer_query_label": "Customer Query (Links included)", # <-- [추가/수정] 누락 키
+        "initial_query_sample": "I arrived in Paris, France, but the eSIM I bought from Klook won't activate. I'm really struggling to get connected. What should I do?", # <-- [추가/수정] 누락 키
         "title": "Personalized AI Study Coach (Voice & DB Integration)",
         "sidebar_title": "📚 AI Study Coach Settings",
         "file_uploader": "Upload Study Materials (PDF, TXT, HTML)",
@@ -292,7 +294,7 @@ LANG = {
         "voice_rec_header": '音声記録と管理',
         "record_help": 'マイクボタンを押して録音するか、ファイルをアップロードしてください。',
         "gcs_missing": 'GCSバケットが設定されていません。SecretsにGCS_BUCKET_NAMEを追加してください。',
-        "openai_missing": 'OpenAI APIキーがありません。SecretsにOPENAI_API_KEYを設定してください。',
+        "openai_missing": 'OpenAI APIキーがありません。SecretsにOPENAI_API_KEYを設定してください。",
         "delete_fail": "削除失敗",
         "save_history_fail": "❌ 対応履歴の保存に失敗しました",
         "delete_success": "✅ 削除が完了されました!", 
@@ -311,7 +313,7 @@ LANG = {
         "transcript_result": '転写結果:',
         "transcript_text": '転写テキスト',
         "llm_error_key": "⚠️ 警告: GEMINI APIキーが設定されていません。Streamlit Secretsに'GEMINI_API_KEY'を設置してください。",
-        "llm_error_init": "LLM初期化エラー：APIキーを確認してください。",
+        "llm_error_init": "LLM 초기화 오류：APIキーを確認してください。",
         "simulation_warning_query": "顧客の問い合わせ内容を入力してください。",
         "simulation_no_key_warning": "⚠️ APIキーが不足しています。応答の生成は続行できません。",
         "simulation_advice_header": "AI対応ガイドライン",
@@ -322,7 +324,7 @@ LANG = {
         "tts_status_success": "✅ 音声再生完了!",
         "tts_status_error": "❌ TTS APIエラーが発生しました",
         "history_expander_title": "📝 以前の対応履歴をロード (最新 10件)", 
-        "initial_query_sample": "フランスのパリに到着しましたが、Klookで購入したeSIMがアクティベートできません。接続できなくて困っています。どうすればいいですか？", 
+        "initial_query_sample": "フランスのパリに到着しましたが、Klookで購入したeSIMがアクティベートできません。接続できなくて困っています。どうすればいいですか？", # <-- [추가/수정] 누락 키
         "button_mic_input": "🎙 音声入力",
         "prompt_customer_end": "お客様からの追加のお問い合わせがないため、本チャットサポートを終了させていただきます。",
         "prompt_survey": "お問い合わせいただき、誠にありがとうございました。追加のご質問がございましたらいつでもご連絡ください。",
@@ -346,6 +348,7 @@ LANG = {
         "no_history_found": "検索条件に一致する履歴はありません。",
         "simulator_header": "AI顧客対応シミュレーター",
         "simulator_desc": "困難な顧客の問い合わせに対してAIの対応草案とガイドラインを提供します。",
+        "customer_query_label": "顧客の問い合わせ内容 (リンクを含む)", # <-- [추가/수정] 누락 키
         "title": "パーソナライズAI学習コーチ (音声・DB統合)",
         "sidebar_title": "📚 AI学習コーチ設定",
         "file_uploader": "学習資料をアップロード (PDF, TXT, HTML)",
@@ -386,7 +389,7 @@ LANG = {
         "quiz_original_response": "LLM 原本応答",
         "firestore_loading": "データベースからRAGインデックスをロード中...",
         "db_save_complete": "(DB保存完了)", 
-        "data_analysis_progress": "資料分析 및 학습 DB 구축 중...", 
+        "data_analysis_progress": "資料分析 및 学習 DB 구축 中...", 
         "response_generating": "応答生成中...", 
         "lstm_result_header": "達成度予測結果",
         "lstm_score_metric": "現在の予測達成度",
@@ -817,9 +820,9 @@ def get_mock_response_data(lang_key, customer_type):
 def get_closing_messages(lang_key):
     if lang_key == 'ko': 
         return {"additional_query": "또 다른 문의 사항은 없으신가요?", "chat_closing": LANG['ko']['prompt_survey']}
-    elif lang_key == 'en': 
+    elif lang_code == 'en': 
         return {"additional_query": "Is there anything else we can assist you with today?", "chat_closing": LANG['en']['prompt_survey']}
-    elif lang_key == 'ja': 
+    elif lang_code == 'ja': 
         return {"additional_query": "また、お客様にお手伝いさせて頂けるお問い合わせは御座いませんか？", "chat_closing": LANG['ja']['prompt_survey']}
     return get_closing_messages('ko')
 # --- End Helper Functions ---
@@ -1077,7 +1080,7 @@ if feature_selection == L["voice_rec_header"]:
                                 with st.spinner(L['transcribing']):
                                     try:
                                         # ⭐ 언어 코드 전달
-                                        blob_bytes = download_audio_from_gcs(bucket_name, data['gcs_path'].split(f'gs://{bucket_name}/')[-1])
+                                        blob_bytes = download_audio_from_from_gcs(bucket_name, data['gcs_path'].split(f'gs://{bucket_name}/')[-1])
                                         mime_type = data.get('mime_type', 'audio/webm')
                                         new_text = transcribe_bytes_with_whisper(
                                             blob_bytes, 
@@ -1109,7 +1112,6 @@ elif feature_selection == L["simulator_tab"]:
     
     # 1. TTS 유틸리티 (상태 표시기 및 JS 함수)를 페이지 상단에 삽입
     st.markdown(f'<div id="tts_status" style="padding: 5px; text-align: center; border-radius: 5px; background-color: #f0f0f0; margin-bottom: 10px;">{L["tts_status_ready"]}</div>', unsafe_allow_html=True)
-    # Python 서버 측 TTS로 전환했으므로, JS 호출은 더 이상 필요 없습니다.
 
     # 1.5 이력 삭제 버튼 및 모달
     db = st.session_state.get('firestore_db')
