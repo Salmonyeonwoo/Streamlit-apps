@@ -28,9 +28,12 @@ PyPDF2
 beautifulsoup4
 
 # ML & Analytics
+#Whisper AI 사용 위해 추가
 numpy
 pandas
 matplotlib
+bs4
+openai
 
 # Utilities
 google-cloud-firestore
