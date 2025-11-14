@@ -1214,12 +1214,10 @@ elif feature_selection == L["simulator_tab"]:
         
         current_lang_key = st.session_state.language 
 
-        # ********** 1217행 수정 적용 시작 **********
         # 버튼을 누르기 전에 L["button_simulate"] 키가 존재하는지 확인하는 방어 로직 추가
         simulate_button_text = L.get("button_simulate", "Simulate") 
         
         if st.button(simulate_button_text, key="start_simulation", disabled=st.session_state.initial_advice_provided):
-        # ********** 1217행 수정 적용 끝 **********
             if not customer_query: st.warning(L["simulation_warning_query"]); st.stop()
             
             st.session_state.simulator_memory.clear()
@@ -1336,7 +1334,10 @@ Customer Inquiry: {customer_query}
                 # --- [수정] 전사 버튼 실행 로직 ---
                 col_transcribe, _ = st.columns([1, 2])
                 
-                if col_transcribe.button(L["transcribe_btn"], key='start_whisper_transcribe'):
+                # ⭐ Key Error 방지를 위한 L.get() 적용
+                transcribe_button_text = L.get("transcribe_btn", "Transcribe")
+                
+                if col_transcribe.button(transcribe_button_text, key='start_whisper_transcribe'):
                     audio_bytes_to_transcribe = st.session_state.get('sim_audio_bytes')
                     audio_mime_to_transcribe = st.session_state.get('sim_audio_mime', 'audio/webm')
                     
