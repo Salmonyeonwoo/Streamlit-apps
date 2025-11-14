@@ -616,6 +616,13 @@ def transcribe_bytes_with_whisper(audio_bytes: bytes, mime_type: str = 'audio/we
     if openai_client is None:
         raise RuntimeError(L['openai_missing'])
     
+    whisper_lang_map = {
+        'ko': 'ko',
+        'en': 'en',
+        'ja': 'ja'
+    }
+    whisper_language = whisper_lang_map.get(lang_code, 'en') # 기본값은 영어
+    
     # Determine file extension
     ext = mime_type.split('/')[-1].lower() if '/' in mime_type else 'webm'
     
@@ -757,12 +764,14 @@ def force_rerun_lstm():
     st.rerun() 
 def render_interactive_quiz(quiz_data, current_lang):
     st.warning("Quiz UI Placeholder")
-def synthesize_and_play_audio(current_lang_key):
+def synthesize_and_play_audio(text_to_speak, current_lang_key):
     L = LANG[current_lang_key]
     openai_client = init_openai_client(L)[0]
+    
     if openai_client is None:
         st.error(L['openai_missing'])
         return None, f"❌ {L['tts_status_error']} (Client Missing)"
+
 
     # TTS 음성 선택 (언어에 따른 대략적인 음성 선택)
     # Whisper는 다국어를 지원하지만, TTS는 현재 en, ja 등 제한적이며, 
@@ -783,6 +792,7 @@ def synthesize_and_play_audio(current_lang_key):
 def render_tts_button(text_to_speak, current_lang_key):
     L = LANG[current_lang_key]
     button_key = f"tts_{hash(text_to_speak)}_{time.time()}" # time.time() 추가하여 키 충돌 방지
+    audio_player_key = f"tts_player_{hash(text_to_speak)}"
     
     if st.button(L.get("button_listen_audio"), key=button_key):
         with st.spinner(L['tts_status_generating']):
@@ -793,7 +803,7 @@ def render_tts_button(text_to_speak, current_lang_key):
                 st.error(status_msg)
             elif audio_bytes:
                 # MP3 오디오 바이트를 Streamlit 오디오 위젯으로 재생
-                st.audio(audio_bytes, format='audio/mp3', autoplay=True, key=f"audio_player_{button_key}")
+                st.audio(audio_bytes, format='audio/mp3', autoplay=True, key=audio_player_key)
                 # st.success(L['tts_status_success']) # 오디오 위젯과 메시지가 겹치므로 생략
             else:
                 st.error(status_msg)
@@ -1307,15 +1317,6 @@ Customer Inquiry: {customer_query}
                 if 'last_transcript' not in st.session_state:
                     st.session_state.last_transcript = ""
                 
-                # 오디오 파일 녹음/업로드 (st.audio_input)
-                
-                    # ⭐ st.audio_input 위젯 사용
-                    # 오디오 파일 녹음/업로드 (mic_recorder component 사용)
-                # ... (중략) ...
-
-                # 오디오 파일 녹음/업로드 (mic_recorder component 사용)
-                # ... (중략) ...
-
                 # 오디오 파일 녹음/업로드 (mic_recorder component 사용)
                 with col_audio:
                     # ⭐ mic_recorder component 사용: 녹음 결과(dict)를 mic_result에 저장합니다.
@@ -1324,9 +1325,7 @@ Customer Inquiry: {customer_query}
                         stop_prompt="✔️ Stop Recording", 
                         key="simulator_audio_input_file"
                     )
-                    
-                if 'sim_audio_bytes_raw' not in st.session_state: 
-                    st.session_state.sim_audio_bytes_raw = None
+                
                 # audio_bytes_from_mic와 mime_type을 세션 상태에 저장 및 업데이트
                 # --- [수정] 녹음 완료 시 즉시 RERUN하여 데이터 반영 ---
                 is_audio_just_recorded = False
@@ -1345,6 +1344,7 @@ Customer Inquiry: {customer_query}
                     st.info("✅ 녹음 완료! 아래의 전사 버튼을 눌러 텍스트를 생성하세요.")
                     st.rerun() # 필수: 데이터가 반영되도록 페이지를 새로 고침
 
+                # ⭐ [추가] 녹음 상태일 때만 녹음 데이터를 보여줍니다.
                 if st.session_state.get('sim_audio_bytes'):
                     st.audio(st.session_state['sim_audio_bytes'], format=st.session_state['sim_audio_mime'])
 
@@ -1388,10 +1388,6 @@ Customer Inquiry: {customer_query}
                 # st.text_area는 전사 결과를 기본값으로 사용
                 agent_response = col_text_area.text_area(
                     L["agent_response_placeholder"], 
-                    value=st.session_state.last_transcript,
-                    key="agent_response_area_text",
-                    height=150
-                )
                 
                                 
                 # --- Enter 키 전송 로직 ---
