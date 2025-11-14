@@ -1246,8 +1246,8 @@ Customer Inquiry: {customer_query}
                     # mic_result는 {'audio_bytes': bytes, 'mime_type': str} 형태
                 
                 # audio_file 대신 mic_result.get('audio_bytes') 사용
-                audio_bytes_from_mic = mic_result.get('audio_bytes')
-                audio_mime_from_mic = mic_result.get('mime_type', 'audio/webm')
+                audio_bytes_from_mic = None
+                audio_mime_from_mic = 'audio/webm'
 
                 # 로직 변경: audio_file 대신 audio_bytes_from_mic 사용
 
@@ -1256,7 +1256,8 @@ Customer Inquiry: {customer_query}
 
                 # This is where the error occurred because the following block was not indented.
                 if audio_bytes_from_mic is not None:
-                    # Use the logic for the *new* variable (audio_bytes_from_mic)
+                    audio_bytes_from_mic = mic_result.get('audio_bytes')
+                    audio_mime_from_mic = mic_result.get('mime_type', 'audio/webm')
                     if openai_client is None:
                         st.error(L.get("whisper_client_error", "OpenAI Key가 없어 음성 인식을 사용할 수 없습니다."))
                 else:
