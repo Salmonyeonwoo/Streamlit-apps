@@ -1425,13 +1425,32 @@ elif feature_selection == L["simulator_tab"]:
                         st.error(f"AI 조언 생성 중 오류 발생: {e}")
         
         st.markdown("---")
+        # (기존 코드: 1429 라인 부근)
+        # for message in st.session_state.simulator_messages:
+        #     if message["role"] == "customer": with st.chat_message("user", avatar="🙋"): st.markdown(message["content"])
+        #                                       ^ SyntaxError 발생 지점
+
+        # --- 수정된 코드 ---
         for message in st.session_state.simulator_messages:
-            if message["role"] == "customer": with st.chat_message("user", avatar="🙋"): st.markdown(message["content"])
-            elif message["role"] == "supervisor": with st.chat_message("assistant", avatar="🤖"): st.markdown(message["content"]); render_tts_button(message["content"], st.session_state.language) 
-            elif message["role"] == "agent_response": with st.chat_message("user", avatar="🧑‍💻"): st.markdown(message["content"])
-            elif message["role"] == "customer_rebuttal": with st.chat_message("assistant", avatar="😠"): st.markdown(message["content"])
-            elif message["role"] == "customer_end": with st.chat_message("assistant", avatar="😊"): st.markdown(message["content"])
-            elif message["role"] == "system_end": with st.chat_message("assistant", avatar="✨"): st.markdown(message["content"])
+            if message["role"] == "customer":
+                with st.chat_message("user", avatar="🙋"):
+                    st.markdown(message["content"])
+            elif message["role"] == "supervisor":
+                with st.chat_message("assistant", avatar="🤖"):
+                    st.markdown(message["content"])
+                    render_tts_button(message["content"], st.session_state.language) 
+            elif message["role"] == "agent_response":
+                with st.chat_message("user", avatar="🧑‍💻"):
+                    st.markdown(message["content"])
+            elif message["role"] == "customer_rebuttal":
+                with st.chat_message("assistant", avatar="😠"):
+                    st.markdown(message["content"])
+            elif message["role"] == "customer_end":
+                with st.chat_message("assistant", avatar="😊"):
+                    st.markdown(message["content"])
+            elif message["role"] == "system_end":
+                with st.chat_message("assistant", avatar="✨"):
+                    st.markdown(message["content"])
 
         if st.session_state.initial_advice_provided and not st.session_state.is_chat_ended:
             last_role = st.session_state.simulator_messages[-1]['role'] if st.session_state.simulator_messages else None
