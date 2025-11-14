@@ -1325,10 +1325,13 @@ Customer Inquiry: {customer_query}
                 # --- [수정] 녹음 완료 시 즉시 RERUN하여 데이터 반영 ---
                 is_audio_just_recorded = False
                 if mic_result and mic_result.get('audio_bytes'):
-                    if st.session_state.get('sim_audio_bytes') is None: # 이전에 저장된 데이터가 없으면
-                        st.session_state['sim_audio_bytes'] = mic_result['audio_bytes']
+                    # ⭐ [재확인] 녹음 완료 시, 이전 데이터와 비교하여 변경된 경우에만 RERUN
+                    current_bytes = mic_result['audio_bytes']
+                    if current_bytes != st.session_state.get('sim_audio_bytes_raw'):
+                        st.session_state['sim_audio_bytes'] = current_bytes
                         st.session_state['sim_audio_mime'] = mic_result.get('mime_type', 'audio/webm')
-                        is_audio_just_recorded = True # 녹음 완료 플래그 설정
+                        st.session_state['sim_audio_bytes_raw'] = current_bytes # 데이터 비교용으로 저장
+                        is_audio_just_recorded = True
                     
                 
                 # 녹음이 방금 완료되었다면, 세션 상태를 반영하기 위해 즉시 RERUN
