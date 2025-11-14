@@ -1187,7 +1187,8 @@ Customer Inquiry: {customer_query}
                with st.chat_message("user", avatar="🙋"):
                    st.markdown(message["content"])
             elif message["role"] == "supervisor":
-                with st.chat_message("assistant", avatar="🤖"): st.markdown(message["content"]);
+                with st.chat_message("assistant", avatar="🤖"): 
+                    st.markdown(message["content"]);
                     render_tts_button(message["content"], st.session_state.language) 
             elif message["role"] == "agent_response":
                 with st.chat_message("user", avatar="🧑‍💻"):
