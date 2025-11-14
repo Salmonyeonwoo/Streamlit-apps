@@ -927,7 +927,7 @@ LANG = {
         "request_rebuttal_button": "顧客の次の反応を要求", 
         "new_simulation_button": "新しいシミュレーションを開始",
         "history_selectbox_label": "履歴を選択してロード:",
-        "history_load_button": "選択された履歴をロード"
+        "history_load_button": "選択された履歴をロード",
         "delete_history_button": "❌ 全ての履歴を削除する", # ⭐ 다국어 키 추가
         "delete_confirm_message": "Are you sure you want to delete ALL simulation history? This action cannot be undone.　本当にすべての履歴を削除しますか。削除しましたら、取消出来ません。", # ⭐ 다국어 키 추가
         "delete_confirm_yes": "はい、削除します。", # ⭐ 다국어 키 추가
