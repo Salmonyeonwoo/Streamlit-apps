@@ -1204,88 +1204,184 @@ Customer Inquiry: {customer_query}
                     st.markdown(message["content"])
 
         if st.session_state.initial_advice_provided and not st.session_state.is_chat_ended:
+            
             last_role = st.session_state.simulator_messages[-1]['role'] if st.session_state.simulator_messages else None
             
+            # 1. 에이전트(사용자)가 응답할 차례 (초기 문의 후, 재반박 후, 매너 질문 후)
             if last_role in ["customer_rebuttal", "customer_end", "supervisor", "customer"]:
+                
                 st.markdown(f"### {L['agent_response_header']}") 
                 
+                # --- ⭐ Whisper 오디오 전사 기능 추가 ---
                 col_audio, col_text_area = st.columns([1, 2])
                 
-                # --- Whisper Audio Input for Agent Response (Currently only using file uploader placeholder) ---
-                with col_audio:
-                    # Streamlit file uploader로 대체
-                    audio_file = st.file_uploader(L['uploaded_file'], type=['wav', 'mp3', 'm4a', 'webm'], key=f"sim_file_uploader_{st.session_state['sim_audio_upload_key']}")
-                    if audio_file:
-                        st.caption("👆 오디오 파일이 업로드되었습니다.")
-                
-                if audio_file:
-                    if openai_client is None: st.error(L.get("whisper_client_error"))
-                    else:
-                        with st.spinner(L.get("whisper_processing")):
-                            try:
-                                mime_type = getattr(audio_file, 'type', 'audio/webm')
-                                transcribed_text = transcribe_bytes_with_whisper(audio_file.getvalue(), mime_type)
-                                st.session_state['last_transcript'] = transcribed_text
-                                st.session_state['sim_audio_upload_key'] += 1 # 키 변경으로 위젯 초기화
-                                st.success(L.get("whisper_success"))
-                                st.rerun() 
-                            except Exception as e: st.error(f"음성 전사 처리 중 오류 발생: {e}"); st.session_state['last_transcript'] = ""
+                # OpenAI Client 초기화 (Secrets에서 키를 로드)
+                openai_key = st.secrets.get("OPENAI_API_KEY")
+                openai_client = None
+                if openai_key:
+                    try:
+                        openai_client = OpenAI(api_key=openai_key)
+                    except Exception:
+                        openai_client = None
 
+                # 전사 결과 저장소 초기화
+                if 'last_transcript' not in st.session_state:
+                    st.session_state.last_transcript = ""
+                
+                # 오디오 파일 녹음/업로드 (st.audio_input)
+                with col_audio:
+                    # ⭐ st.audio_input 위젯 사용
+                    audio_file = st.audio_input(L["button_mic_input"], key="simulator_audio_input_file")
+                
+                if audio_file is not None:
+                    if openai_client is None:
+                        st.error(L.get("whisper_client_error", "OpenAI Key가 없어 음성 인식을 사용할 수 없습니다."))
+                    else:
+                        with st.spinner(L.get("whisper_processing", "음성 파일을 텍스트로 변환 중...")):
+                            try:
+                                # 전사 함수 호출
+                                transcribed_text = transcribe_audio_with_whisper(audio_file, openai_client, current_lang_key)
+                                
+                                if transcribed_text.startswith("❌"):
+                                    st.error(transcribed_text)
+                                    st.session_state.last_transcript = ""
+                                else:
+                                    st.session_state.last_transcript = transcribed_text
+                                    st.success(L.get("whisper_success", "✅ 음성 전사 완료! 텍스트 창을 확인하세요."))
+                                
+                                # st.audio_input의 결과 반영을 위해 rerun
+                                st.rerun() 
+                                
+                            except Exception as e:
+                                st.error(f"음성 전사 처리 중 오류 발생: {e}")
+                                st.session_state.last_transcript = ""
+
+
+                # st.text_area는 전사 결과를 기본값으로 사용
                 agent_response = col_text_area.text_area(
-                    L["agent_response_placeholder"], value=st.session_state['last_transcript'], key="agent_response_area_text", height=150
+                    L["agent_response_placeholder"], 
+                    value=st.session_state.last_transcript,
+                    key="agent_response_area_text",
+                    height=150
                 )
                 
-                # JS Enter Key Listener (Code remains commented out as Streamlit components are disabled for security/complexity)
-                # st.components.v1.html("""<script>const textarea = document.querySelector('textarea[key="agent_response_area_text"]'); const button = document.querySelector('button[key="send_agent_response_sim"]'); if (textarea && button) { textarea.addEventListener('keydown', function(event) { if (event.key === 'Enter' && (!event.shiftKey && !event.ctrlKey)) { event.preventDefault(); button.click(); } }); }</script>""", height=0, width=0)
-
-                if st.button(L["send_response_button"], key="send_agent_response_sim"): 
+                # --- Enter 키 전송 로직 ---
+                js_code_for_enter = f"""
+                <script>
+                // st.text_area의 키가 'agent_response_area_text'인 요소를 찾습니다.
+                const textarea = document.querySelector('textarea[key="agent_response_area_text"]');
+                const button = document.querySelector('button[key="send_agent_response"]');
+                
+                if (textarea && button) {{
+                    textarea.addEventListener('keydown', function(event) {{
+                        // Shift + Enter 또는 Ctrl + Enter는 줄바꿈
+                        if (event.key === 'Enter' && (event.shiftKey || event.ctrlKey)) {{
+                            // 기본 동작(줄바꿈) 허용
+                        }} 
+                        // Enter만 눌렀을 때 전송
+                        else if (event.key === 'Enter') {{
+                            event.preventDefault(); // 기본 Enter 동작(줄바꿈) 방지
+                            button.click();
+                        }}
+                    }});
+                }}
+                </script>
+                """
+                
+                # Streamlit에 JavaScript 삽입
+                st.components.v1.html(js_code_for_enter, height=0, width=0)
+                
+                if st.button(L["send_response_button"], key="send_agent_response"): 
                     if agent_response.strip():
-                        st.session_state['last_transcript'] = ""
-                        st.session_state.simulator_messages.append({"role": "agent_response", "content": agent_response})
+                        # 전송 후 전사 결과 상태 초기화
+                        st.session_state.last_transcript = ""
+                        
+                        st.session_state.simulator_messages.append(
+                            {"role": "agent_response", "content": agent_response}
+                        )
                         st.session_state.simulator_memory.chat_memory.add_user_message(agent_response)
+                        # DB 저장 및 리런
                         save_simulation_history(db, st.session_state.customer_query_text_area, customer_type_display, st.session_state.simulator_messages)
                         st.rerun()
-                    else: st.warning(L.get("empty_response_warning"))
+                    else:
+                        st.warning(L.get("empty_response_warning", "응답 내용이 비어 있습니다."))
             
+            # 2. 고객의 다음 반응 요청 (LLM 호출) 또는 종료 버튼 표시
+            # 에이전트의 응답 후, 고객 반응 요청 버튼 또는 종료 버튼 표시
             if last_role == "agent_response":
+                
                 col_end, col_next = st.columns([1, 2])
                 
-                if col_end.button(L["button_end_chat"], key="end_chat_sim"): 
+                # A) 응대 종료 버튼 (매너 종료)
+                if col_end.button(L["button_end_chat"], key="end_chat"): 
                     closing_messages = get_closing_messages(current_lang_key)
-                    st.session_state.simulator_messages.append({"role": "supervisor", "content": closing_messages["additional_query"]})
+                    
+                    # 매너 질문과 최종 종료 인사는 AI의 응답으로 간주하여 메모리에 추가
+                    st.session_state.simulator_messages.append({"role": "supervisor", "content": closing_messages["additional_query"]}) # 매너 질문
                     st.session_state.simulator_memory.chat_memory.add_ai_message(closing_messages["additional_query"])
-                    st.session_state.simulator_messages.append({"role": "system_end", "content": closing_messages["chat_closing"]})
+
+                    st.session_state.simulator_messages.append({"role": "system_end", "content": closing_messages["chat_closing"]}) # 최종 종료 인사
                     st.session_state.simulator_memory.chat_memory.add_ai_message(closing_messages["chat_closing"])
+                    
                     st.session_state.is_chat_ended = True
+                    
+                    # ⭐ Firebase 이력 업데이트: 최종 종료 상태 저장
                     save_simulation_history(db, st.session_state.customer_query_text_area, customer_type_display, st.session_state.simulator_messages)
+                    
                     st.rerun()
 
-                if col_next.button(L["request_rebuttal_button"], key="request_rebuttal_sim"):
-                    if not API_KEY or not st.session_state.is_llm_ready: st.warning(L["simulation_no_key_warning"]); st.stop()
+                # B) 고객의 다음 반응 요청 (LLM 호출)
+                if col_next.button(L["request_rebuttal_button"], key="request_rebuttal"): # ⭐ LLM 호출 텍스트 제거
+                    if not API_KEY:
+                        st.warning("API Key가 없기 때문에 LLM을 통한 대화형 시뮬레이션은 불가능합니다.")
+                        st.stop()
                     
-                    next_reaction_prompt = f"""Analyze the entire chat history. Roleplay as the customer ({customer_type_display}). Based on the agent's last message, generate ONE of the following responses: either a follow-up question/request (rebuttal) OR a statement of satisfaction and closing. The response MUST be strictly in {LANG[current_lang_key]['lang_select']}."""
+                    if st.session_state.simulator_chain is None:
+                        st.error(L['llm_error_init'] + " (시뮬레이터 체인 초기화 실패)")
+                        st.stop()
+                        
+                    # ⭐ 핵심 수정된 프롬프트 (강력하게 협조적인 고객을 유도)
+                    next_reaction_prompt = f"""
+                    Analyze the entire chat history. Roleplay as the customer ({customer_type_display}). 
+                    Based on the agent's last message, generate ONE of the following responses in the customer's voice:
+                    1. Provide **ONE** of the crucial, previously requested details (Model, Location, or Last Step) in a cooperative tone.
+                    2. A short, positive closing remark (e.g., "{L['customer_positive_response']}").
                     
-                    with st.spinner(L["response_generating"]):
+                    Crucially, the customer MUST be highly cooperative. If the agent asks for information, the customer MUST provide the detail requested (Model, Location, or Last Step) without arguing or asking why. The purpose of this simulation is for the agent (human user) to practice systematically collecting information and troubleshooting.
+                    
+                    The response MUST be strictly in {LANG[current_lang_key]['lang_select']}.
+                    """
+                    
+                    with st.spinner(L["response_generating"]): # ⭐ 다국어 적용
                         try:
                             customer_reaction = st.session_state.simulator_chain.predict(input=next_reaction_prompt)
-                            positive_keywords = ["감사", "thank you", "ありがとう", L['customer_positive_response'].lower().split('/')[-1].strip()]
-                            is_positive_close = any(keyword in customer_reaction.lower() for keyword in positive_keywords)
-                            
-                            if is_positive_close:
-                                role = "customer_end"
-                                st.session_state.simulator_messages.append({"role": role, "content": customer_reaction})
-                                st.session_state.simulator_memory.chat_memory.add_ai_message(customer_reaction)
-                                st.session_state.simulator_messages.append({"role": "supervisor", "content": L["customer_closing_confirm"]})
-                                st.session_state.simulator_memory.chat_memory.add_ai_message(L["customer_closing_confirm"])
-                            else:
-                                role = "customer_rebuttal"
-                                st.session_state.simulator_messages.append({"role": role, "content": customer_reaction})
-                                st.session_state.simulator_memory.chat_memory.add_ai_message(customer_reaction)
-                                
-                            save_simulation_history(db, st.session_state.customer_query_text_area, customer_type_display, st.session_state.simulator_messages)
-                            st.rerun()
-                        except Exception as e: st.error(f"LLM 응답 생성 중 오류 발생: {e}")
+                        except Exception as e:
+                            st.error(f"LLM 응답 생성 중 오류 발생: {e}")
+                            st.stop()
+                        
+                        # 긍정적 종료 키워드 확인 (대소문자 무시)
+                        positive_keywords = ["감사", "thank you", "ありがとう", L['customer_positive_response'].lower().split('/')[-1].strip()]
+                        is_positive_close = any(keyword in customer_reaction.lower() for keyword in positive_keywords)
+                        
+                        if is_positive_close:
+                            role = "customer_end" # 긍정적 종료
+                            st.session_state.simulator_messages.append({"role": role, "content": customer_reaction})
+                            st.session_state.simulator_memory.chat_memory.add_ai_message(customer_reaction)
+
+                            # 긍정 종료 후 에이전트에게 매너 질문 요청
+                            st.session_state.simulator_messages.append({"role": "supervisor", "content": L["customer_closing_confirm"]})
+                            st.session_state.simulator_memory.chat_memory.add_ai_message(L["customer_closing_confirm"])
+                        else:
+                            role = "customer_rebuttal" # 재반박, 추가 질문, 또는 정보 제공
+                            st.session_state.simulator_messages.append({"role": role, "content": customer_reaction})
+                            st.session_state.simulator_memory.chat_memory.add_ai_message(customer_reaction)
+                             
+                        # DB 저장 및 리런
+                        save_simulation_history(db, st.session_state.customer_query_text_area, customer_type_display, st.session_state.simulator_messages)
+                        st.rerun()
+
     else:
+        # LLM 초기화 자체에 문제가 있을 경우의 오류 메시지 (다국어)
         st.error(L["llm_error_init"])
 
 elif feature_selection == L["rag_tab"]:
@@ -1293,9 +1389,11 @@ elif feature_selection == L["rag_tab"]:
     st.header(L["rag_header"])
     st.markdown(L["rag_desc"])
     if st.session_state.get('is_rag_ready', False) and st.session_state.get('conversation_chain'):
-        if "messages" not in st.session_state: st.session_state.messages = []
+        if "messages" not in st.session_state:
+            st.session_state.messages = []
         for message in st.session_state.messages:
-            with st.chat_message(message["role"]): st.markdown(message["content"])
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
         if prompt := st.chat_input(L["rag_input_placeholder"]):
             st.session_state.messages.append({"role":"user","content":prompt})
             with st.chat_message("user"): st.markdown(prompt)
