@@ -295,7 +295,7 @@ LANG = {
         "voice_rec_header": '音声記録と管理',
         "record_help": 'マイクボタンを押して録音するか、ファイルをアップロードしてください。',
         "gcs_missing": 'GCSバケットが設定されていません。SecretsにGCS_BUCKET_NAMEを追加してください。',
-        "openai_missing": 'OpenAI APIキーがありません。SecretsにOPENAI_API_KEYを設定してください。",
+        "openai_missing": 'OpenAI APIキーがありません。SecretsにOPENAI_API_KEYを設定してください。',
         "delete_fail": "削除失敗",
         "save_history_fail": "❌ 対応履歴の保存に失敗しました",
         "delete_success": "✅ 削除が完了されました!", 
